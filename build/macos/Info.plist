@@ -7,7 +7,7 @@
   <key>CFBundleDisplayName</key>
   <string>Geotagger</string>
   <key>CFBundleIdentifier</key>
-  <string>com.geotagger.desktop</string>
+  <string>io.github.alex-mcdermott.geotagger</string>
   <key>CFBundleVersion</key>
   <string>__VERSION__</string>
   <key>CFBundleShortVersionString</key>

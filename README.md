@@ -1,5 +1,7 @@
 # Geotagger
 
+[![CI](https://github.com/alex-mcdermott/Image-GeoTagger-GUI/actions/workflows/ci.yml/badge.svg)](https://github.com/alex-mcdermott/Image-GeoTagger-GUI/actions/workflows/ci.yml)
+
 A desktop app for adding GPS locations to camera RAW files (and JPEG/HEIC/TIFF), either by placing photos on a map, the way Lightroom Classic's Map module works, or automatically from GPX track logs. It runs on Windows and macOS, uses [ExifTool](https://exiftool.org) under the hood, and has a Windows 11 (Fluent) look.
 
 ## Features
@@ -25,7 +27,7 @@ A desktop app for adding GPS locations to camera RAW files (and JPEG/HEIC/TIFF),
 
 ## Download
 
-Get the latest build from the **Releases** page:
+Get the latest build from the [Releases page](https://github.com/alex-mcdermott/Image-GeoTagger-GUI/releases):
 
 | Platform | File | Notes |
 | --- | --- | --- |
@@ -114,4 +116,4 @@ Built with [Avalonia](https://avaloniaui.net) and [FluentAvalonia](https://githu
 
 ## License
 
-[MIT](LICENSE)
+Copyright © 2026 Alex McDermott. Released under the [GNU General Public License v3.0](LICENSE).

@@ -52,7 +52,7 @@ public partial class App : Application
         };
         var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
         // Tile and geocoding services require an identifying User-Agent.
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Geotagger/{Version} (desktop photo geotagging app)");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Geotagger/{Version} (+https://github.com/alex-mcdermott/Image-GeoTagger-GUI)");
         return http;
     }
 }
