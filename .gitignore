@@ -1,0 +1,27 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+*.app/
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Test results
+TestResults/
+*.trx
+coverage*.xml
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# exiftool is downloaded at build/run time, never committed
+tools/exiftool/

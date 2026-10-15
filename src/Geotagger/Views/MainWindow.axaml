@@ -1,0 +1,12 @@
+<win:FAAppWindow xmlns="https://github.com/avaloniaui"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:win="using:FluentAvalonia.UI.Windowing"
+                 xmlns:views="using:Geotagger.Views"
+                 xmlns:vm="using:Geotagger.ViewModels"
+                 x:Class="Geotagger.Views.MainWindow"
+                 x:DataType="vm:MainViewModel"
+                 Title="{Binding WindowTitle}"
+                 Width="1440" Height="900" MinWidth="980" MinHeight="640"
+                 WindowStartupLocation="CenterScreen">
+  <views:MainView Name="View" />
+</win:FAAppWindow>

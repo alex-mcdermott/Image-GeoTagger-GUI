@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Geotagger.Core/Geotagger.Core.csproj" />
+    <Project Path="src/Geotagger/Geotagger.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Geotagger.Tests/Geotagger.Tests.csproj" />
+  </Folder>
+</Solution>

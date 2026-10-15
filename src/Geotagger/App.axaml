@@ -1,0 +1,11 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sty="using:FluentAvalonia.Styling"
+             x:Class="Geotagger.App"
+             Name="Geotagger"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
+    <StyleInclude Source="avares://Geotagger/Styles/AppStyles.axaml" />
+  </Application.Styles>
+</Application>

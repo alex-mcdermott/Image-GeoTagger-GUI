@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+     version="1.1" creator="Geotagger tests">
+  <metadata>
+    <name>Morning walk</name>
+    <time>2024-06-01T09:00:00Z</time>
+  </metadata>
+  <wpt lat="51.5007" lon="-0.1246"><name>Big Ben</name></wpt>
+  <trk>
+    <name>Walk</name>
+    <trkseg>
+      <trkpt lat="51.5000" lon="-0.1200"><ele>10.0</ele><time>2024-06-01T09:00:00Z</time></trkpt>
+      <trkpt lat="51.5010" lon="-0.1210"><ele>12.0</ele><time>2024-06-01T09:01:00Z</time></trkpt>
+      <trkpt lat="51.5020" lon="-0.1220"><ele>14.0</ele><time>2024-06-01T09:02:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>110</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+    </trkseg>
+    <trkseg>
+      <!-- Logger switched off for an hour. -->
+      <trkpt lat="51.6000" lon="-0.2000"><ele>20</ele><time>2024-06-01T10:02:00Z</time></trkpt>
+      <trkpt lat="51.6010" lon="-0.2010"><time>2024-06-01T10:03:00.500Z</time></trkpt>
+      <trkpt lat="91" lon="0"><time>2024-06-01T10:04:00Z</time></trkpt>
+    </trkseg>
+  </trk>
+  <rte>
+    <name>Planned</name>
+    <rtept lat="51.0" lon="-1.0" />
+    <rtept lat="51.1" lon="-1.1" />
+  </rte>
+</gpx>

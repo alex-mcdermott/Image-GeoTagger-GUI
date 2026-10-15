@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Geotagger.ViewModels"
+             x:Class="Geotagger.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel"
+             MinWidth="480" MaxWidth="560">
+  <ScrollViewer MaxHeight="560" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="18" Margin="24,0,24,8">
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="cardHeader" Text="Saving locations" />
+        <ComboBox SelectedIndex="{Binding WriteTargetIndex}" HorizontalAlignment="Stretch">
+          <ComboBoxItem Content="Write into the photo files" />
+          <ComboBoxItem Content="Write XMP sidecars (don't modify RAW files)" />
+          <ComboBoxItem Content="Write into the files and XMP sidecars" />
+        </ComboBox>
+        <TextBlock Text="{Binding WriteTargetDescription}" Classes="caption" TextWrapping="Wrap" />
+        <CheckBox IsChecked="{Binding KeepBackups}" Margin="0,4,0,0">
+          <StackPanel>
+            <TextBlock Text="Keep a backup of every file that's changed" />
+            <TextBlock Text="ExifTool leaves a copy named like PHOTO.ORF_original next to each file." Classes="caption" TextWrapping="Wrap" />
+          </StackPanel>
+        </CheckBox>
+        <CheckBox IsChecked="{Binding PreserveFileDates}">
+          <StackPanel>
+            <TextBlock Text="Keep files' modified dates" />
+            <TextBlock Text="Stops sync and backup tools from treating geotagged photos as newly edited." Classes="caption" TextWrapping="Wrap" />
+          </StackPanel>
+        </CheckBox>
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="cardHeader" Text="Opening folders" />
+        <CheckBox IsChecked="{Binding PairRawWithJpeg}">
+          <StackPanel>
+            <TextBlock Text="Treat RAW+JPEG pairs as one photo" />
+            <TextBlock Text="The JPEG with the same name as a RAW file gets the same location." Classes="caption" TextWrapping="Wrap" />
+          </StackPanel>
+        </CheckBox>
+        <CheckBox IsChecked="{Binding IncludeSubfolders}" Content="Include photos in subfolders" />
+        <CheckBox IsChecked="{Binding OfferFolderGpx}" Content="Offer to load GPX files found in the folder" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="cardHeader" Text="ExifTool" />
+        <TextBlock Text="{Binding ExifToolStatus}" Classes="caption" TextWrapping="Wrap" />
+        <Grid ColumnDefinitions="*,6,Auto">
+          <TextBox Text="{Binding ExifToolPath}" PlaceholderText="Find automatically" />
+          <Button Grid.Column="2" Content="Browse…" Command="{Binding BrowseExifToolCommand}" />
+        </Grid>
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="cardHeader" Text="Appearance" />
+        <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Theme}" MinWidth="220" />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="cardHeader" Text="Cache" />
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="{Binding CacheText}" Classes="caption" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Content="Clear cache" Command="{Binding ClearCachesCommand}" />
+        </Grid>
+      </StackPanel>
+
+      <StackPanel Spacing="4">
+        <TextBlock Classes="cardHeader" Text="About" />
+        <TextBlock Classes="caption" TextWrapping="Wrap"
+                   Text="Geotagger uses ExifTool by Phil Harvey (exiftool.org). Map data © OpenStreetMap contributors; imagery © Esri; terrain © OpenTopoMap; dark map © CARTO. Place search by Nominatim." />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

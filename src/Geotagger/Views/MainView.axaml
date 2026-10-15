@@ -1,0 +1,432 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:Geotagger.ViewModels"
+             xmlns:map="using:Geotagger.Map"
+             xmlns:svc="using:Geotagger.Services"
+             mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="860"
+             x:Class="Geotagger.Views.MainView"
+             x:DataType="vm:MainViewModel">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- ===================================================== Command bar -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,2,8,4">
+      <ui:FACommandBar Name="Commands" DefaultLabelPosition="Right" HorizontalAlignment="Left" IsDynamicOverflowEnabled="True">
+        <ui:FACommandBar.PrimaryCommands>
+          <ui:FACommandBarButton Label="Open folder" Command="{Binding OpenFolderCommand}" ToolTip.Tip="Open a folder of photos (Ctrl+O)">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="OpenFolder" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+          <ui:FACommandBarButton Label="Add track log" Command="{Binding AddGpxCommand}" ToolTip.Tip="Load GPX track logs (Ctrl+G)">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Directions" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+          <ui:FACommandBarSeparator />
+          <ui:FACommandBarButton Label="Undo" Command="{Binding UndoEditCommand}" ToolTip.Tip="Undo (Ctrl+Z)">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Undo" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+          <ui:FACommandBarButton Label="Redo" Command="{Binding RedoEditCommand}" ToolTip.Tip="Redo (Ctrl+Y)">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Redo" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+          <ui:FACommandBarSeparator />
+          <ui:FACommandBarButton Label="Remove location" Command="{Binding RemoveLocationCommand}" ToolTip.Tip="Remove the location from the selected photos">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Delete" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+          <ui:FACommandBarButton Label="Discard changes" Command="{Binding DiscardCommand}" ToolTip.Tip="Throw away all unsaved changes">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Dismiss" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+        </ui:FACommandBar.PrimaryCommands>
+        <ui:FACommandBar.SecondaryCommands>
+          <ui:FACommandBarButton Label="Reload folder" Command="{Binding ReloadFolderCommand}">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Refresh" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+          <ui:FACommandBarButton Label="Select photos without a location" Command="{Binding SelectWithoutLocationCommand}">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="SelectAll" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+          <ui:FACommandBarButton Label="Settings" Command="{Binding OpenSettingsCommand}">
+            <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Settings" /></ui:FACommandBarButton.IconSource>
+          </ui:FACommandBarButton>
+        </ui:FACommandBar.SecondaryCommands>
+      </ui:FACommandBar>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Button Classes="subtle icon" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="Settings">
+          <ui:FASymbolIcon Symbol="Settings" FontSize="18" />
+        </Button>
+        <Button Classes="accent" Command="{Binding SaveCommand}" MinWidth="110" ToolTip.Tip="Write locations to the files (Ctrl+S)">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ui:FASymbolIcon Symbol="Save" FontSize="16" />
+            <TextBlock Text="{Binding SaveButtonText}" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Grid>
+
+    <!-- ===================================================== Main area -->
+    <Grid Grid.Row="1" Name="MainGrid" ColumnDefinitions="*,6,360" RowDefinitions="*,6,206">
+
+      <!-- Map -->
+      <Border Grid.Row="0" Grid.Column="0" Margin="8,0,0,0" CornerRadius="8" ClipToBounds="True"
+              BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+        <Panel>
+          <map:MapView Name="Map"
+                       MapStyle="{Binding MapStyle}"
+                       Markers="{Binding MapMarkers}"
+                       Tracks="{Binding MapTracks}"
+                       SearchPin="{Binding SearchPin}"
+                       TileCache="{Binding TileCache}">
+            <map:MapView.ContextFlyout>
+              <MenuFlyout>
+                <MenuItem Name="PlaceHereMenuItem" Header="Place selected photos here" Click="OnPlaceHereClick">
+                  <MenuItem.Icon><ui:FASymbolIcon Symbol="MapPin" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Name="SelectHereMenuItem" Header="Select photos at this pin" Click="OnSelectHereClick" />
+                <MenuItem Header="Copy coordinates" Click="OnCopyContextCoordinatesClick">
+                  <MenuItem.Icon><ui:FASymbolIcon Symbol="Copy" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Zoom to all photos" Command="{Binding ZoomToPhotosCommand}">
+                  <MenuItem.Icon><ui:FASymbolIcon Symbol="ZoomOut" /></MenuItem.Icon>
+                </MenuItem>
+              </MenuFlyout>
+            </map:MapView.ContextFlyout>
+          </map:MapView>
+
+          <!-- Search -->
+          <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Width="340" Spacing="6">
+            <Border Classes="floating" Padding="0">
+              <TextBox Name="SearchBox" Text="{Binding SearchText}" BorderThickness="0" Background="Transparent"
+                       PlaceholderText="Search for a place or paste coordinates" VerticalContentAlignment="Center" MinHeight="36">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+                  <KeyBinding Gesture="Escape" Command="{Binding ClearSearchCommand}" />
+                </TextBox.KeyBindings>
+                <TextBox.InnerLeftContent>
+                  <ui:FASymbolIcon Symbol="Find" FontSize="16" Margin="10,0,2,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </TextBox.InnerLeftContent>
+                <TextBox.InnerRightContent>
+                  <StackPanel Orientation="Horizontal">
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsSearching}" Width="40" Margin="4,0" />
+                    <Button Classes="subtle icon" Command="{Binding ClearSearchCommand}" ToolTip.Tip="Clear search"
+                            IsVisible="{Binding SearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                      <ui:FASymbolIcon Symbol="Dismiss" FontSize="12" />
+                    </Button>
+                  </StackPanel>
+                </TextBox.InnerRightContent>
+              </TextBox>
+            </Border>
+
+            <Border Classes="floating" Padding="4" IsVisible="{Binding IsSearchResultsOpen}">
+              <ItemsControl ItemsSource="{Binding SearchResults}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="svc:GeocodeResult">
+                    <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).GoToSearchResultCommand}"
+                            CommandParameter="{Binding}">
+                      <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Detail}" Classes="caption" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+
+            <Button Classes="accent" IsVisible="{Binding HasSearchPin}" Command="{Binding PlaceSelectionAtSearchPinCommand}"
+                    HorizontalAlignment="Left" ToolTip.Tip="Give the selected photos the location of the red search pin">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <ui:FASymbolIcon Symbol="MapPin" FontSize="14" />
+                <TextBlock Text="Place selected photos at the search pin" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <!-- Map style and zoom -->
+          <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Spacing="8">
+            <Border Classes="floating" Padding="0">
+              <ComboBox ItemsSource="{Binding AllMapStyles}" SelectedItem="{Binding MapStyle}" BorderThickness="0"
+                        Background="Transparent" MinWidth="128" ToolTip.Tip="Map style">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="map:MapStyle">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <ui:FASymbolIcon Symbol="Map" FontSize="14" />
+                      <TextBlock Text="{Binding Name}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Border>
+            <Border Classes="floating" Padding="0" HorizontalAlignment="Right" ClipToBounds="True">
+              <StackPanel>
+                <Button Classes="mapButton" Click="OnZoomInClick" ToolTip.Tip="Zoom in">
+                  <ui:FASymbolIcon Symbol="Add" FontSize="14" />
+                </Button>
+                <Separator Margin="6,0" />
+                <Button Classes="mapButton" Click="OnZoomOutClick" ToolTip.Tip="Zoom out">
+                  <ui:FASymbolIcon Symbol="Remove" FontSize="14" />
+                </Button>
+                <Separator Margin="6,0" />
+                <Button Classes="mapButton" Command="{Binding ZoomToPhotosCommand}" ToolTip.Tip="Show all photos and tracks">
+                  <ui:FASymbolIcon Symbol="Target" FontSize="15" />
+                </Button>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Notifications -->
+          <ui:FAInfoBar VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,16,16,40" MaxWidth="680" MinWidth="360"
+                        IsOpen="{Binding IsInfoOpen, Mode=TwoWay}" Title="{Binding InfoTitle}" Message="{Binding InfoMessage}"
+                        Severity="{Binding InfoSeverity}" IsClosable="True" Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}">
+            <ui:FAInfoBar.ActionButton>
+              <Button Content="{Binding InfoActionText}" Command="{Binding InfoActionCommand}" IsVisible="{Binding HasInfoAction}" />
+            </ui:FAInfoBar.ActionButton>
+          </ui:FAInfoBar>
+        </Panel>
+      </Border>
+
+      <GridSplitter Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" ResizeDirection="Columns" Name="ColumnSplitter" />
+
+      <!-- ===================================================== Side pane -->
+      <ScrollViewer Grid.Row="0" Grid.RowSpan="3" Grid.Column="2" Margin="0,0,8,8" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="8">
+
+          <!-- Selection -->
+          <Border Classes="card">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="cardHeader" Text="Photo" />
+
+              <StackPanel Spacing="8" IsVisible="{Binding !HasSelection}">
+                <TextBlock Classes="secondary" TextWrapping="Wrap"
+                           Text="Select photos in the filmstrip below, then drag them onto the map, right-click the map, or paste coordinates." />
+              </StackPanel>
+
+              <StackPanel Spacing="10" IsVisible="{Binding HasSelection}">
+                <Border CornerRadius="6" ClipToBounds="True" Height="210" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        IsVisible="{Binding IsSingleSelection}">
+                  <Image Source="{Binding SelectionPreview}" Stretch="Uniform" />
+                </Border>
+
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{Binding SelectionTitle}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding SelectionDate}" Classes="secondary" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SelectionCamera}" Classes="caption" TextWrapping="Wrap"
+                             IsVisible="{Binding SelectionCamera, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Text="{Binding SelectionFiles}" Classes="caption" TextWrapping="Wrap"
+                             IsVisible="{Binding SelectionFiles, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+
+                <Border Classes="inset">
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                    <ui:FASymbolIcon Grid.RowSpan="3" Symbol="MapPin" FontSize="18" VerticalAlignment="Top" Margin="0,1,10,0" />
+                    <SelectableTextBlock Grid.Column="1" Text="{Binding SelectionLocation}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding SelectionAltitude, StringFormat='Altitude {0}'}" Classes="caption"
+                               IsVisible="{Binding HasSelectionAltitude}" />
+                    <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding SelectionStatus}" Classes="caption" Margin="0,2,0,0"
+                               IsVisible="{Binding SelectionStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </Grid>
+                </Border>
+
+                <Grid ColumnDefinitions="*,6,Auto">
+                  <TextBox Text="{Binding CoordinateInput}" PlaceholderText="Type or paste coordinates…" VerticalContentAlignment="Center">
+                    <TextBox.KeyBindings>
+                      <KeyBinding Gesture="Enter" Command="{Binding ApplyCoordinatesCommand}" />
+                    </TextBox.KeyBindings>
+                  </TextBox>
+                  <Button Grid.Column="2" Command="{Binding ApplyCoordinatesCommand}" Content="Apply" />
+                </Grid>
+                <TextBlock Classes="error" Text="{Binding CoordinateError}"
+                           IsVisible="{Binding CoordinateError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                <WrapPanel Orientation="Horizontal">
+                  <Button Classes="subtle" Command="{Binding ShowSelectionOnMapCommand}" Margin="0,0,4,4">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Target" FontSize="14" /><TextBlock Text="Show on map" /></StackPanel>
+                  </Button>
+                  <Button Classes="subtle" Command="{Binding CopyCoordinatesCommand}" Margin="0,0,4,4">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Copy" FontSize="14" /><TextBlock Text="Copy" /></StackPanel>
+                  </Button>
+                  <Button Classes="subtle" Command="{Binding RemoveLocationCommand}" Margin="0,0,4,4">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Delete" FontSize="14" /><TextBlock Text="Remove" /></StackPanel>
+                  </Button>
+                  <Button Classes="subtle" Command="{Binding RevertSelectionCommand}" IsVisible="{Binding SelectionHasPending}" Margin="0,0,4,4">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Undo" FontSize="14" /><TextBlock Text="Revert" /></StackPanel>
+                  </Button>
+                </WrapPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- Track logs -->
+          <Border Classes="card">
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="cardHeader" Text="Track logs" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Command="{Binding AddGpxCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Add" FontSize="12" /><TextBlock Text="Add GPX" /></StackPanel>
+                </Button>
+              </Grid>
+
+              <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !HasTracks}"
+                         Text="Load GPX files from a phone app or GPS logger to tag photos automatically from the time each one was taken." />
+
+              <ItemsControl ItemsSource="{Binding Tracks}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GpxTrackViewModel">
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,3" ToolTip.Tip="{Binding ToolTip}">
+                      <Border Width="4" CornerRadius="2" Background="{Binding Brush}" Margin="0,2,10,2" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Details}" Classes="caption" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <Button Grid.Column="2" Classes="subtle icon" ToolTip.Tip="Remove this track log"
+                              Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).RemoveTrackCommand}"
+                              CommandParameter="{Binding}">
+                        <ui:FASymbolIcon Symbol="Dismiss" FontSize="12" />
+                      </Button>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <StackPanel Spacing="10" IsVisible="{Binding HasTracks}">
+                <StackPanel>
+                  <TextBlock Classes="label" Text="Camera clock time zone" />
+                  <ComboBox ItemsSource="{Binding TimeZones}" SelectedItem="{Binding SelectedTimeZone}" HorizontalAlignment="Stretch"
+                            MaxDropDownHeight="360" />
+                </StackPanel>
+                <CheckBox IsChecked="{Binding PreferEmbeddedOffset}">
+                  <TextBlock Text="Prefer the time zone stored in the photo, if any" TextWrapping="Wrap" />
+                </CheckBox>
+                <Grid ColumnDefinitions="*,10,*">
+                  <StackPanel>
+                    <TextBlock Classes="label" Text="Camera clock correction" />
+                    <TextBox Text="{Binding ClockCorrectionText}" ToolTip.Tip="Added to each photo's time. Use + if the camera clock was slow, − if it was fast." />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Classes="label" Text="Max gap (minutes)" />
+                    <ui:FANumberBox Value="{Binding ToleranceMinutes}" Minimum="0.5" Maximum="1440" SmallChange="1" LargeChange="10"
+                                    SpinButtonPlacementMode="Compact"
+                                    ToolTip.Tip="How far (in time) a photo may be from the nearest track point and still be matched" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Classes="error" Text="{Binding ClockCorrectionError}"
+                           IsVisible="{Binding ClockCorrectionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <Border Classes="inset">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="{Binding MatchSummary}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding TrackTimeHint}" Classes="caption" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+                <CheckBox IsChecked="{Binding ReplaceExistingLocations}">
+                  <TextBlock Text="Replace locations photos already have" TextWrapping="Wrap" />
+                </CheckBox>
+                <Grid ColumnDefinitions="*,8,*">
+                  <Button Classes="accent" Command="{Binding AutoTagAllCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                          Content="Auto-tag all" />
+                  <Button Grid.Column="2" Command="{Binding AutoTagSelectedCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                          Content="Auto-tag selected" />
+                </Grid>
+                <Button Classes="subtle" Command="{Binding ClearTracksCommand}" HorizontalAlignment="Left">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Delete" FontSize="14" /><TextBlock Text="Remove all track logs" /></StackPanel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <GridSplitter Grid.Row="1" Grid.Column="0" ResizeDirection="Rows" Name="RowSplitter" />
+
+      <!-- ===================================================== Filmstrip -->
+      <Border Grid.Row="2" Grid.Column="0" Margin="8,0,0,8" Classes="card" Padding="0">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto" Margin="14,6,8,0">
+            <TextBlock Text="{Binding PhotoCountText}" VerticalAlignment="Center" Classes="secondary" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+              <ComboBox ItemsSource="{Binding Filters}" SelectedItem="{Binding Filter}" MinWidth="160" ToolTip.Tip="Show" />
+              <Button Classes="subtle" Command="{Binding SelectAllCommand}" ToolTip.Tip="Select all (Ctrl+A)">
+                <ui:FASymbolIcon Symbol="SelectAll" FontSize="16" />
+              </Button>
+              <Button Classes="subtle" Command="{Binding SelectNoneCommand}" ToolTip.Tip="Select none">
+                <ui:FASymbolIcon Symbol="ClearSelection" FontSize="16" />
+              </Button>
+            </StackPanel>
+          </Grid>
+
+          <ListBox Grid.Row="1" Name="Filmstrip" Classes="filmstrip" ItemsSource="{Binding VisiblePhotos}" SelectionMode="Multiple"
+                   ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:PhotoItemViewModel">
+                <Grid Width="148" RowDefinitions="*,Auto" ToolTip.Tip="{Binding StatusText}">
+                  <Border Classes="thumbFrame">
+                    <Panel>
+                      <ui:FASymbolIcon Symbol="Image" FontSize="28" Opacity="0.35" IsVisible="{Binding Thumbnail, Converter={x:Static ObjectConverters.IsNull}}" />
+                      <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
+                      <Border Classes="badge" Classes.pending="{Binding IsPending}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5"
+                              IsVisible="{Binding HasLocation}">
+                        <ui:FASymbolIcon Symbol="MapPinFilled" FontSize="12" Foreground="White" />
+                      </Border>
+                      <Border Classes="badge removal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5" IsVisible="{Binding IsPendingRemoval}">
+                        <ui:FASymbolIcon Symbol="Dismiss" FontSize="10" Foreground="White" />
+                      </Border>
+                      <Border Classes="formatTag" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="5">
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="{Binding FormatLabel}" />
+                          <TextBlock Text="{Binding CompanionLabel}" IsVisible="{Binding HasCompanions}" />
+                        </StackPanel>
+                      </Border>
+                    </Panel>
+                  </Border>
+                  <StackPanel Grid.Row="1" Margin="2,5,2,0">
+                    <TextBlock Text="{Binding FileName}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding TimeText}" FontSize="11" Classes="secondary" />
+                  </StackPanel>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <!-- Empty state -->
+          <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" IsVisible="{Binding !HasPhotos}">
+            <Button Classes="accent" Command="{Binding OpenFolderCommand}" HorizontalAlignment="Center" Padding="16,8">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <ui:FASymbolIcon Symbol="OpenFolder" FontSize="16" />
+                <TextBlock Text="Open a folder of photos" />
+              </StackPanel>
+            </Button>
+            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" IsVisible="{Binding HasRecentFolders}">
+              <TextBlock Text="Recent:" Classes="caption" VerticalAlignment="Center" />
+              <ItemsControl ItemsSource="{Binding RecentFolders}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <HyperlinkButton Content="{Binding}" Padding="4,2" FontSize="12" ToolTip.Tip="{Binding}" MaxWidth="260"
+                                     Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).OpenRecentCommand}"
+                                     CommandParameter="{Binding}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ===================================================== Status bar -->
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="14,0,14,6" MinHeight="22">
+      <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="{Binding IsBusyIndeterminate}" Value="{Binding BusyProgress}"
+                   Width="140" Margin="0,0,12,0" VerticalAlignment="Center" />
+      <TextBlock Grid.Column="1" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" Classes="caption" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      <TextBlock Grid.Column="1" Text="{Binding StatusText}" IsVisible="{Binding !IsBusy}" Classes="caption" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      <TextBlock Grid.Column="2" Text="{Binding ExifToolStatus}" Classes="caption" VerticalAlignment="Center" Margin="12,0,0,0" />
+    </Grid>
+  </Grid>
+</UserControl>
