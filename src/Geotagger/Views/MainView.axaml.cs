@@ -41,6 +41,11 @@ public partial class MainView : UserControl
         Map.ItemsDropped += OnMapDrop;
         Map.DropItemCount = data => data.TryGetValue(PhotoFormat)?.Photos.Count ?? 0;
         Map.ViewChanged += OnMapViewChanged;
+        // Hover cards shouldn't disappear under the controls floating over the map.
+        Map.AvoidAreas = () => new Control[] { SearchPanel, MapControlsPanel, InfoBar }
+            .Where(c => c.IsVisible && c.Bounds.Height > 0 && c.Bounds.Width > 0)
+            .Select(c => c.TranslatePoint(default, Map) is { } p ? new Rect(p, c.Bounds.Size) : default)
+            .Where(r => r.Width > 0);
         if (Map.ContextFlyout is MenuFlyout flyout) flyout.Opening += OnMapContextOpening;
     }
 

@@ -94,7 +94,7 @@
           </map:MapView>
 
           <!-- Search -->
-          <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Width="340" Spacing="6">
+          <StackPanel Name="SearchPanel" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Width="340" Spacing="6">
             <Border Classes="floating" Padding="0">
               <TextBox Name="SearchBox" Text="{Binding SearchText}" BorderThickness="0" Background="Transparent"
                        PlaceholderText="Search for a place or paste coordinates" VerticalContentAlignment="Center" MinHeight="36">
@@ -144,7 +144,7 @@
           </StackPanel>
 
           <!-- Map style and zoom -->
-          <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Spacing="8">
+          <StackPanel Name="MapControlsPanel" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Spacing="8">
             <Border Classes="floating" Padding="0">
               <ComboBox ItemsSource="{Binding AllMapStyles}" SelectedItem="{Binding MapStyle}" BorderThickness="0"
                         Background="Transparent" MinWidth="128" ToolTip.Tip="Map style">
@@ -176,7 +176,7 @@
           </StackPanel>
 
           <!-- Notifications -->
-          <ui:FAInfoBar VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,16,16,40" MaxWidth="680" MinWidth="360"
+          <ui:FAInfoBar Name="InfoBar" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,16,16,40" MaxWidth="680" MinWidth="360"
                         IsOpen="{Binding IsInfoOpen, Mode=TwoWay}" Title="{Binding InfoTitle}" Message="{Binding InfoMessage}"
                         Severity="{Binding InfoSeverity}" IsClosable="True" Background="{DynamicResource SolidBackgroundFillColorTertiaryBrush}">
             <ui:FAInfoBar.ActionButton>

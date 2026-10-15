@@ -25,3 +25,7 @@ desktop.ini
 
 # exiftool is downloaded at build/run time, never committed
 tools/exiftool/
+
+# Python
+__pycache__/
+*.pyc

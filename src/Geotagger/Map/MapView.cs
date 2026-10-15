@@ -107,6 +107,9 @@ public sealed class MapView : Control
     /// <summary>Returns how many items a drag payload carries (0 = not droppable here).</summary>
     public Func<IDataTransfer, int>? DropItemCount { get; set; }
 
+    /// <summary>Areas (in map coordinates) covered by floating controls that hover cards should avoid.</summary>
+    public Func<IEnumerable<Rect>>? AvoidAreas { get; set; }
+
     /// <summary>Where the user last right-clicked (for context menu actions).</summary>
     public GeoPoint? ContextLocation { get; private set; }
 
@@ -557,11 +560,8 @@ public sealed class MapView : Control
         double pad = 8;
         double cardW = Math.Max(Math.Max(thumbW, t1.Width), t2.Width) + pad * 2;
         double cardH = pad + (thumb is not null ? thumbH + 6 : 0) + t1.Height + (subtitle.Length > 0 ? t2.Height + 2 : 0) + pad;
-        double x = Math.Clamp(c.Sx - cardW / 2, 6, Math.Max(6, w - cardW - 6));
-        double y = c.Sy - 40 - cardH;
-        if (y < 6) y = c.Sy + 10;
-
-        var rect = new Rect(x, y, cardW, cardH);
+        var rect = PlaceCard(c, cardW, cardH, w, h);
+        double x = rect.X, y = rect.Y;
         using (ctx.PushTransform(Matrix.CreateTranslation(0, 3)))
             ctx.DrawRectangle(new SolidColorBrush(Colors.Black, 0.18), null, rect.Inflate(1), 9, 9);
         ctx.DrawRectangle(new SolidColorBrush(dark ? Color.FromRgb(0x2B, 0x2B, 0x2B) : Colors.White, 0.97),
@@ -579,6 +579,32 @@ public sealed class MapView : Control
         ctx.DrawText(t1, new Point(x + pad, cy));
         cy += t1.Height + 2;
         if (subtitle.Length > 0) ctx.DrawText(t2, new Point(x + pad, cy));
+    }
+
+    /// <summary>
+    /// Picks a spot for the hover card: above the pin if possible, otherwise below, left or right,
+    /// avoiding the map's edges and any floating controls drawn over it.
+    /// </summary>
+    private Rect PlaceCard(Cluster c, double cardW, double cardH, double w, double h)
+    {
+        const double margin = 6;
+        double centred = Math.Clamp(c.Sx - cardW / 2, margin, Math.Max(margin, w - cardW - margin));
+        double middle = Math.Clamp(c.Sy - 20 - cardH / 2, margin, Math.Max(margin, h - cardH - margin));
+        Rect[] candidates =
+        [
+            new(centred, c.Sy - 40 - cardH, cardW, cardH),
+            new(centred, c.Sy + 10, cardW, cardH),
+            new(c.Sx - 24 - cardW, middle, cardW, cardH),
+            new(c.Sx + 24, middle, cardW, cardH),
+        ];
+        var avoid = AvoidAreas?.Invoke().Select(r => r.Inflate(4)).ToList() ?? [];
+        foreach (var r in candidates)
+        {
+            bool inside = r.X >= margin && r.Y >= margin && r.Right <= w - margin && r.Bottom <= h - margin;
+            if (inside && !avoid.Any(a => a.Intersects(r))) return r;
+        }
+        var fallback = candidates[0];
+        return fallback.Y < margin ? candidates[1] : fallback;
     }
 
     private void DrawScaleBar(DrawingContext ctx, double h, bool dark)

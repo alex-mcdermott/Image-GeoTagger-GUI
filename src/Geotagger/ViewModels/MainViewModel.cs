@@ -245,7 +245,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get
         {
-            if (SelectedPhoto is { } p) return p.StatusText;
+            if (SelectedPhoto is { } p) return p.Status == LocationStatus.None ? "" : p.StatusText;
             int pending = SelectedPhotos.Count(x => x.IsPending);
             return pending > 0 ? $"{pending} unsaved change{(pending == 1 ? "" : "s")}" : "";
         }
