@@ -25,7 +25,7 @@ public sealed class GpxTrackViewModel
         MapTracks = file.Tracks
             .SelectMany(t => t.Segments)
             .Where(s => s.Points.Count > 0)
-            .Select(s => new MapTrack(s.Points.Select(p => p.ToGeoPoint()), Color, file.DisplayName))
+            .Select(s => new MapTrack(s.Points, Color, file.DisplayName))
             .ToList();
     }
 

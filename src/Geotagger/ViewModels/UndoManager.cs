@@ -64,6 +64,7 @@ public sealed class UndoManager
     private static PendingState Normalise(PhotoItemViewModel photo, PendingState state)
     {
         if (!state.HasChange) return PendingState.None;
+        if (state.CaptureTime is not null) return state; // a new date taken is always a change
         if (state.Location is null && photo.OriginalLocation is null) return PendingState.None;
         if (state.Location is { } p && photo.OriginalLocation is { } o && p.SamePlaceAs(o) &&
             Nullable.Equals(p.Altitude, o.Altitude) && state.GpsTimeUtc is null)

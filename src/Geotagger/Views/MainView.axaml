@@ -22,6 +22,10 @@
           <ui:FACommandBarButton Label="Add track log" Command="{Binding AddGpxCommand}" ToolTip.Tip="Load GPX track logs (Ctrl+G)">
             <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Directions" /></ui:FACommandBarButton.IconSource>
           </ui:FACommandBarButton>
+          <ui:FACommandBarToggleButton Label="Film mode" IsChecked="{Binding IsFilmMode, Mode=TwoWay}"
+                                       ToolTip.Tip="Film mode: drop photos onto a GPX track to set their location, date taken and file dates from the track (Ctrl+M)">
+            <ui:FACommandBarToggleButton.IconSource><ui:FASymbolIconSource Symbol="Camera" /></ui:FACommandBarToggleButton.IconSource>
+          </ui:FACommandBarToggleButton>
           <ui:FACommandBarSeparator />
           <ui:FACommandBarButton Label="Undo" Command="{Binding UndoEditCommand}" ToolTip.Tip="Undo (Ctrl+Z)">
             <ui:FACommandBarButton.IconSource><ui:FASymbolIconSource Symbol="Undo" /></ui:FACommandBarButton.IconSource>
@@ -75,6 +79,7 @@
                        Markers="{Binding MapMarkers}"
                        Tracks="{Binding MapTracks}"
                        SearchPin="{Binding SearchPin}"
+                       SnapToTracks="{Binding IsFilmMode}"
                        TileCache="{Binding TileCache}">
             <map:MapView.ContextFlyout>
               <MenuFlyout>
@@ -115,6 +120,13 @@
                   </StackPanel>
                 </TextBox.InnerRightContent>
               </TextBox>
+            </Border>
+
+            <Border Name="FilmBanner" Classes="floating" HorizontalAlignment="Left" Padding="12,7" IsVisible="{Binding IsFilmMode}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <ui:FASymbolIcon Symbol="Camera" FontSize="16" Foreground="{DynamicResource AccentFillColorDefaultBrush}" VerticalAlignment="Top" Margin="0,1,0,0" />
+                <TextBlock Text="{Binding FilmHint}" TextWrapping="Wrap" MaxWidth="290" FontSize="13" />
+              </StackPanel>
             </Border>
 
             <Border Classes="floating" Padding="4" IsVisible="{Binding IsSearchResultsOpen}">
@@ -291,10 +303,15 @@
 
               <StackPanel Spacing="10" IsVisible="{Binding HasTracks}">
                 <StackPanel>
-                  <TextBlock Classes="label" Text="Camera clock time zone" />
+                  <TextBlock Classes="label" Text="{Binding TimeZoneLabel}" />
                   <ComboBox ItemsSource="{Binding TimeZones}" SelectedItem="{Binding SelectedTimeZone}" HorizontalAlignment="Stretch"
                             MaxDropDownHeight="360" />
                 </StackPanel>
+                <Border Classes="inset" IsVisible="{Binding IsFilmMode}">
+                  <TextBlock Classes="caption" TextWrapping="Wrap"
+                             Text="Hover the track to see the time at any point. Dropping photos on it sets their position, date taken and file created/modified dates. Photos dropped together are spaced one second apart, in filmstrip order." />
+                </Border>
+                <StackPanel Spacing="10" IsVisible="{Binding IsDigitalMode}">
                 <CheckBox IsChecked="{Binding PreferEmbeddedOffset}">
                   <TextBlock Text="Prefer the time zone stored in the photo, if any" TextWrapping="Wrap" />
                 </CheckBox>
@@ -327,6 +344,7 @@
                   <Button Grid.Column="2" Command="{Binding AutoTagSelectedCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                           Content="Auto-tag selected" />
                 </Grid>
+                </StackPanel>
                 <Button Classes="subtle" Command="{Binding ClearTracksCommand}" HorizontalAlignment="Left">
                   <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Delete" FontSize="14" /><TextBlock Text="Remove all track logs" /></StackPanel>
                 </Button>

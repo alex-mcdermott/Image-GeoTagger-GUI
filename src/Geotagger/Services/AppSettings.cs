@@ -20,6 +20,7 @@ public sealed class AppSettings
     public bool PreferEmbeddedOffset { get; set; } = true;
     public double ToleranceMinutes { get; set; } = 10;
     public bool ReplaceExistingLocations { get; set; }
+    public bool FilmMode { get; set; }
     public string? LastFolder { get; set; }
     public List<string> RecentFolders { get; set; } = [];
     public double? MapLatitude { get; set; }

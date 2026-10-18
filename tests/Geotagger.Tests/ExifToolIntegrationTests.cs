@@ -103,7 +103,7 @@ public class ExifToolIntegrationTests
         Assert.True(File.Exists(sidecar));
         Assert.Contains(sidecar, photo.SidecarPaths);
 
-        var fromSidecar = (await MetadataReader.ReadSidecarsAsync(et, [sidecar]))[Path.GetFullPath(sidecar)]!.Value;
+        var fromSidecar = (await MetadataReader.ReadSidecarsAsync(et, [sidecar]))[Path.GetFullPath(sidecar)].Location!.Value;
         Assert.Equal(where.Latitude, fromSidecar.Latitude, 5);
         Assert.Equal(where.Longitude, fromSidecar.Longitude, 5);
         Assert.Equal("ORF", await TestExifTool.RunAsync("-s3", "-XMP-photoshop:SidecarForExtension", sidecar));
@@ -117,7 +117,7 @@ public class ExifToolIntegrationTests
         r = await GeoWriter.WriteAsync(et, photo, new GeoTagChange(moved), new WriteOptions { Target = WriteTarget.Sidecar });
         Assert.True(r.Success, string.Join("; ", r.Errors));
         Assert.Equal("Green", await TestExifTool.RunAsync("-s3", "-XMP-xmp:Label", sidecar));
-        fromSidecar = (await MetadataReader.ReadSidecarsAsync(et, [sidecar]))[Path.GetFullPath(sidecar)]!.Value;
+        fromSidecar = (await MetadataReader.ReadSidecarsAsync(et, [sidecar]))[Path.GetFullPath(sidecar)].Location!.Value;
         Assert.Equal(48.8584, fromSidecar.Latitude, 5);
     }
 

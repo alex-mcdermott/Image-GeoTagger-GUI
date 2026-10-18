@@ -21,6 +21,7 @@ A desktop app for adding GPS locations to camera RAW files (and JPEG/HEIC/TIFF),
   - Photo times are matched to the track, interpolating between fixes.
   - Settings for the camera's time zone (DST-aware), clock correction and maximum time gap.
   - A summary shows how many photos fall inside the track, and the time ranges to compare when they don't.
+- **Film mode** for film photographers: record a GPX track on your phone while you shoot, then drag your scans onto the route. Each photo gets the position *and* the time of that point on the track, written as the date taken and the file's created/modified dates.
 - **Review before writing:** unsaved changes show as orange pins and badges, with full undo/redo, until you press **Save**.
 - **Safe writing:**
   - Locations go into the files, into XMP sidecars, or both.
@@ -84,8 +85,20 @@ If ExifTool isn't bundled or installed, Geotagger offers to download the latest 
 | Ctrl/⌘+C / Ctrl/⌘+V | Copy / paste coordinates between photos |
 | Ctrl/⌘+A, Esc | Select all / none |
 | Ctrl/⌘+F | Search the map |
+| Ctrl/⌘+M | Toggle film mode |
 | Shift+drag on map | Box-select pins |
 | Double-click map | Zoom in |
+
+### Film mode
+
+Film cameras don't record when or where a frame was taken, but your phone can. Record a GPX track (for example with Open GPX Tracker, Strava or Gaia GPS) while you shoot, then:
+
+1. Open the folder of scans and turn on **Film mode** (Ctrl/⌘+M).
+2. **Add GPX** to load the track. Hover over the route to see the time at any point.
+3. Drag frames from the filmstrip onto the route where you took them. Pins snap to the track: drops off the route are ignored, and dragging a pin along the route changes its time. Several frames dropped together are spaced one second apart, in filmstrip order.
+4. Check the *Time zone for the photos' dates* (it defaults to this computer's zone and handles daylight saving), then **Save**.
+
+For each frame this writes the GPS position, altitude and GPS time from the track; `DateTimeOriginal` with `OffsetTimeOriginal`; and the file's modified date (plus the created date on Windows, and on macOS when Apple's developer tools are installed). In sidecar mode the dates go into the `.xmp` (`XMP-exif:DateTimeOriginal`, `XMP-photoshop:DateCreated`) and the RAW file's contents aren't touched.
 
 ### What gets written
 

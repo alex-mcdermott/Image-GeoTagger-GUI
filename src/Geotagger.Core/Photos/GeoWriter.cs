@@ -30,8 +30,10 @@ public sealed record WriteOptions
 /// <summary>
 /// A location change to apply. <see cref="Location"/> null removes GPS data.
 /// <see cref="GpsTimeUtc"/> is written as the GPS fix time when the location came from a track log.
+/// <see cref="CaptureTime"/>, when set (film mode), also rewrites the date taken and the file's
+/// created/modified dates; its offset is the photo's local time zone.
 /// </summary>
-public sealed record GeoTagChange(GeoPoint? Location, DateTimeOffset? GpsTimeUtc = null)
+public sealed record GeoTagChange(GeoPoint? Location, DateTimeOffset? GpsTimeUtc = null, DateTimeOffset? CaptureTime = null)
 {
     public static GeoTagChange Remove { get; } = new((GeoPoint?)null);
 }
@@ -45,7 +47,8 @@ public static class GeoWriter
     /// <summary>Arguments that write (or remove) EXIF GPS tags in a media file.</summary>
     public static List<string> BuildEmbeddedArgs(string file, GeoTagChange change, WriteOptions options)
     {
-        var args = CommonArgs(options);
+        // When the capture time changes, the file dates are set explicitly instead of preserved.
+        var args = CommonArgs(options, preserveDates: options.PreserveFileDates && change.CaptureTime is null);
         if (change.Location is { } p)
         {
             args.Add($"-GPSLatitude={Math.Abs(p.Latitude).ToString("0.########", Inv)}");
@@ -84,9 +87,37 @@ public static class GeoWriter
             args.Add("-GPS:all=");
             args.AddRange(XmpGpsDeletes());
         }
+
+        if (change.CaptureTime is { } taken)
+        {
+            args.Add($"-DateTimeOriginal={taken.ToString("yyyy:MM:dd HH:mm:ss", Inv)}");
+            args.Add($"-OffsetTimeOriginal={FormatOffset(taken.Offset)}");
+            args.Add("-SubSecTimeOriginal=");
+            args.AddRange(FileDateArgs(taken));
+        }
         args.Add(file);
         return args;
     }
+
+    /// <summary>Sets the file system's modified (and, on Windows, created) date without touching the contents.</summary>
+    public static List<string> BuildFileDateArgs(string file, DateTimeOffset taken) =>
+        ["-charset", "filename=utf8", .. FileDateArgs(taken), file];
+
+    /// <summary>macOS keeps the creation date separately; exiftool sets it via MacOS:FileCreateDate.</summary>
+    public static List<string> BuildMacCreateDateArgs(string file, DateTimeOffset taken) =>
+        ["-charset", "filename=utf8", $"-MacOS:FileCreateDate={FormatDateWithZone(taken)}", file];
+
+    private static IEnumerable<string> FileDateArgs(DateTimeOffset taken)
+    {
+        yield return $"-FileModifyDate={FormatDateWithZone(taken)}";
+        if (OperatingSystem.IsWindows()) yield return $"-FileCreateDate={FormatDateWithZone(taken)}";
+    }
+
+    private static string FormatDateWithZone(DateTimeOffset t) =>
+        t.ToString("yyyy:MM:dd HH:mm:ss", Inv) + FormatOffset(t.Offset);
+
+    private static string FormatOffset(TimeSpan offset) =>
+        (offset < TimeSpan.Zero ? "-" : "+") + offset.Duration().ToString(@"hh\:mm", Inv);
 
     /// <summary>Arguments that write GPS into an XMP sidecar, creating it when <paramref name="exists"/> is false.</summary>
     public static List<string> BuildSidecarArgs(string sidecarPath, bool exists, string mediaPath, GeoTagChange change, WriteOptions options)
@@ -121,6 +152,13 @@ public static class GeoWriter
             args.Add("-XMP-exif:GPSDateTime=");
         }
 
+        if (change.CaptureTime is { } taken)
+        {
+            string value = FormatDateWithZone(taken);
+            args.Add($"-XMP-exif:DateTimeOriginal={value}");
+            args.Add($"-XMP-photoshop:DateCreated={value}");
+        }
+
         if (exists)
         {
             args.Add(sidecarPath);
@@ -140,12 +178,12 @@ public static class GeoWriter
         "-XMP-exif:GPSLatitude=", "-XMP-exif:GPSLongitude=", "-XMP-exif:GPSAltitude=", "-XMP-exif:GPSAltitudeRef=",
     ];
 
-    private static List<string> CommonArgs(WriteOptions options)
+    private static List<string> CommonArgs(WriteOptions options, bool preserveDates)
     {
         var args = new List<string> { "-charset", "filename=utf8" };
         // In-place keeps the file's identity (cloud sync, ACLs, macOS extended attributes).
         if (!options.KeepBackups) args.Add("-overwrite_original_in_place");
-        if (options.PreserveFileDates) args.Add("-P");
+        if (preserveDates) args.Add("-P");
         return args;
     }
 
@@ -177,11 +215,12 @@ public static class GeoWriter
         var errors = new List<string>();
         var warnings = new List<string>();
         var written = new List<string>();
+        var targets = PlanTargets(photo, options).ToList();
 
-        foreach (var (path, isSidecar, exists) in PlanTargets(photo, options).ToList())
+        foreach (var (path, isSidecar, exists) in targets)
         {
             // Removing GPS from a sidecar that doesn't exist yet is a no-op.
-            if (isSidecar && !exists && change.Location is null) continue;
+            if (isSidecar && !exists && change.Location is null && change.CaptureTime is null) continue;
 
             var args = isSidecar
                 ? BuildSidecarArgs(path, exists, photo.PrimaryPath, change, options)
@@ -211,6 +250,22 @@ public static class GeoWriter
             {
                 errors.Add($"{Path.GetFileName(path)}: exiftool did not update the file. {r.Output.Trim()} {r.Errors.Trim()}".Trim());
             }
+        }
+
+        if (change.CaptureTime is { } taken)
+        {
+            // Raw files left untouched in sidecar mode still get their file dates set (contents unchanged).
+            var embedded = targets.Where(t => !t.IsSidecar).Select(t => t.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var media in photo.MediaFiles.Where(m => !embedded.Contains(m)))
+            {
+                var r = await exifTool.ExecuteAsync(BuildFileDateArgs(media, taken), ct).ConfigureAwait(false);
+                foreach (var e in r.ErrorLines) errors.Add($"{Path.GetFileName(media)}: {e}");
+            }
+
+            // Best effort: the macOS creation date needs Apple's SetFile tool, which may not be installed.
+            if (OperatingSystem.IsMacOS())
+                foreach (var media in photo.MediaFiles)
+                    await exifTool.ExecuteAsync(BuildMacCreateDateArgs(media, taken), ct).ConfigureAwait(false);
         }
 
         return new WriteResult(photo, errors.Count == 0, errors, warnings, written);

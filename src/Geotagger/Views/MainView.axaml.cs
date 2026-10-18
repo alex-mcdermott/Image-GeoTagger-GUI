@@ -37,12 +37,13 @@ public partial class MainView : UserControl
 
         Map.MarkersClicked += (_, e) => _vm?.SelectFromMap(e.Markers, e.Modifiers);
         Map.BoxSelected += (_, e) => _vm?.SelectFromMap(e.Markers, e.Modifiers);
-        Map.MarkersMoved += (_, e) => _vm?.MoveMarkers(e.Markers, e.To);
+        Map.MarkersMoved += OnMarkersMoved;
+        Map.FormatTime = t => _vm?.FormatTrackTime(t) ?? t.ToLocalTime().ToString("HH:mm:ss");
         Map.ItemsDropped += OnMapDrop;
         Map.DropItemCount = data => data.TryGetValue(PhotoFormat)?.Photos.Count ?? 0;
         Map.ViewChanged += OnMapViewChanged;
         // Hover cards shouldn't disappear under the controls floating over the map.
-        Map.AvoidAreas = () => new Control[] { SearchPanel, MapControlsPanel, InfoBar }
+        Map.AvoidAreas = () => new Control[] { SearchPanel, MapControlsPanel, InfoBar, FilmBanner }
             .Where(c => c.IsVisible && c.Bounds.Height > 0 && c.Bounds.Width > 0)
             .Select(c => c.TranslatePoint(default, Map) is { } p ? new Rect(p, c.Bounds.Size) : default)
             .Where(r => r.Width > 0);
@@ -215,7 +216,28 @@ public partial class MainView : UserControl
     private void OnMapDrop(object? sender, Map.MapDropEventArgs e)
     {
         if (_vm is null || e.Data.TryGetValue(PhotoFormat) is not { } payload) return;
-        _vm.DropOnMap(payload.Photos, e.Location);
+        if (_vm.IsFilmMode)
+        {
+            if (e.Snap is { } snap) _vm.FilmPlace(payload.Photos, snap);
+        }
+        else
+        {
+            _vm.DropOnMap(payload.Photos, e.Location);
+        }
+    }
+
+    private void OnMarkersMoved(object? sender, Map.MapMarkersMovedEventArgs e)
+    {
+        if (_vm is null) return;
+        if (_vm.IsFilmMode)
+        {
+            if (e.Snap is { } snap)
+                _vm.FilmPlace(e.Markers.SelectMany(m => m.Photos).OfType<PhotoItemViewModel>().ToList(), snap);
+        }
+        else
+        {
+            _vm.MoveMarkers(e.Markers, e.To);
+        }
     }
 
     // ------------------------------------------------------------------ Map context menu & buttons
@@ -230,12 +252,30 @@ public partial class MainView : UserControl
             1 => "Place the selected photo here",
             _ => $"Place {n} selected photos here",
         };
+        if (_vm is { IsFilmMode: true })
+        {
+            if (Map.ContextSnap is { } snap)
+                PlaceHereMenuItem.Header += $" ({_vm.FormatTrackTime(snap.Time)})";
+            else
+            {
+                PlaceHereMenuItem.IsEnabled = false;
+                PlaceHereMenuItem.Header = "Right-click on the track to place photos (film mode)";
+            }
+        }
         SelectHereMenuItem.IsVisible = Map.ContextMarkers is { Count: > 0 };
     }
 
     private void OnPlaceHereClick(object? sender, RoutedEventArgs e)
     {
-        if (_vm is not null && Map.ContextLocation is { } p) _vm.PlaceSelectionAt(p);
+        if (_vm is null) return;
+        if (_vm.IsFilmMode)
+        {
+            if (Map.ContextSnap is { } snap) _vm.FilmPlace(_vm.SelectedPhotos, snap);
+        }
+        else if (Map.ContextLocation is { } p)
+        {
+            _vm.PlaceSelectionAt(p);
+        }
     }
 
     private void OnSelectHereClick(object? sender, RoutedEventArgs e)
@@ -276,6 +316,7 @@ public partial class MainView : UserControl
                 case Key.S: _vm.SaveCommand.Execute(null); break;
                 case Key.F: SearchBox.Focus(); SearchBox.SelectAll(); break;
                 case Key.OemComma: _vm.OpenSettingsCommand.Execute(null); break;
+                case Key.M: _vm.IsFilmMode = !_vm.IsFilmMode; break;
                 case Key.Z when !inText: _vm.UndoEditCommand.Execute(null); break;
                 case Key.Y when !inText: _vm.RedoEditCommand.Execute(null); break;
                 case Key.A when !inText: _vm.SelectAllCommand.Execute(null); break;

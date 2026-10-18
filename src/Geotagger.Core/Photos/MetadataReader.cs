@@ -41,6 +41,9 @@ public sealed record PhotoMetadata
     }
 }
 
+/// <summary>What an XMP sidecar says about a photo (null when it says nothing).</summary>
+public sealed record SidecarMetadata(GeoPoint? Location, DateTime? DateTaken, TimeSpan? TimeZoneOffset);
+
 /// <summary>Reads the metadata Geotagger needs from media files and XMP sidecars via exiftool.</summary>
 public static class MetadataReader
 {
@@ -58,7 +61,7 @@ public static class MetadataReader
     public static IReadOnlyList<string> BuildSidecarArgs(IEnumerable<string> files) =>
     [
         "-json", "-n", "-charset", "filename=utf8",
-        "-XMP:GPSLatitude", "-XMP:GPSLongitude", "-XMP:GPSAltitude", "-XMP:GPSAltitudeRef",
+        "-XMP:GPSLatitude", "-XMP:GPSLongitude", "-XMP:GPSAltitude", "-XMP:GPSAltitudeRef", "-XMP:DateTimeOriginal",
         .. files,
     ];
 
@@ -86,15 +89,15 @@ public static class MetadataReader
         return result;
     }
 
-    /// <summary>Reads GPS positions from XMP sidecars; result is keyed by sidecar path.</summary>
-    public static async Task<Dictionary<string, GeoPoint?>> ReadSidecarsAsync(ExifToolService exifTool,
+    /// <summary>Reads GPS positions and capture dates from XMP sidecars; result is keyed by sidecar path.</summary>
+    public static async Task<Dictionary<string, SidecarMetadata>> ReadSidecarsAsync(ExifToolService exifTool,
         IReadOnlyList<string> sidecars, CancellationToken ct = default)
     {
-        var result = new Dictionary<string, GeoPoint?>(PathComparer);
+        var result = new Dictionary<string, SidecarMetadata>(PathComparer);
         foreach (var batch in sidecars.Chunk(BatchSize))
         {
             var r = await exifTool.ExecuteAsync(BuildSidecarArgs(batch), ct).ConfigureAwait(false);
-            foreach (var (path, point) in ParseSidecarJson(r.Output)) result[path] = point;
+            foreach (var (path, data) in ParseSidecarJson(r.Output)) result[path] = data;
         }
         return result;
     }
@@ -151,7 +154,7 @@ public static class MetadataReader
         return list;
     }
 
-    internal static IEnumerable<(string Path, GeoPoint? Location)> ParseSidecarJson(string json)
+    internal static IEnumerable<(string Path, SidecarMetadata Data)> ParseSidecarJson(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) yield break;
         using var doc = JsonDocument.Parse(json);
@@ -167,7 +170,9 @@ public static class MetadataReader
                 var p = new GeoPoint(lat, lon, alt);
                 if (p.IsValid) location = p;
             }
-            yield return (NormalisePath(source), location);
+            // XMP dates look like "2026:10:14 10:05:17+01:00" (optionally with sub-seconds).
+            string? date = GetString(e, "DateTimeOriginal");
+            yield return (NormalisePath(source), new SidecarMetadata(location, ParseExifDate(date), ParseTrailingOffset(date)));
         }
     }
 
@@ -182,6 +187,14 @@ public static class MetadataReader
             DateTime.TryParseExact(s[..19], "yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
             return d;
         return null;
+    }
+
+    internal static TimeSpan? ParseTrailingOffset(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim();
+        if (s.EndsWith('Z')) return TimeSpan.Zero;
+        return s.Length >= 25 ? ParseOffset(s[^6..]) : null;
     }
 
     internal static TimeSpan? ParseOffset(string? s)

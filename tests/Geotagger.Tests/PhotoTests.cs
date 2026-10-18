@@ -84,8 +84,8 @@ public class MetadataReaderTests
     {
         string json = $$"""[{"SourceFile":"{{JsonPath("a.xmp")}}","GPSLatitude":51.49,"GPSLongitude":-0.26,"GPSAltitude":5,"GPSAltitudeRef":1},{"SourceFile":"{{JsonPath("b.xmp")}}"}]""";
         var list = MetadataReader.ParseSidecarJson(json).ToList();
-        Assert.Equal(new GeoPoint(51.49, -0.26, -5), list[0].Location);
-        Assert.Null(list[1].Location);
+        Assert.Equal(new GeoPoint(51.49, -0.26, -5), list[0].Data.Location);
+        Assert.Null(list[1].Data.Location);
     }
 }
 

@@ -71,6 +71,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _preferEmbeddedOffset = settings.PreferEmbeddedOffset;
         _toleranceMinutes = settings.ToleranceMinutes;
         _replaceExistingLocations = settings.ReplaceExistingLocations;
+        _isFilmMode = settings.FilmMode;
         _filter = Filters[0];
         _mapStyle = MapStyles.ById(settings.MapStyle);
     }
@@ -201,8 +202,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SelectedPhoto is { } p) return p.DateTimeText;
             var dates = SelectedPhotos.Where(p => p.DateTaken.HasValue).Select(p => p.DateTaken!.Value).OrderBy(d => d).ToList();
             if (dates.Count == 0) return "";
+            string fmt = (dates[^1] - dates[0]).TotalMinutes < 1 ? "HH:mm:ss" : "HH:mm";
             return dates[0].Date == dates[^1].Date
-                ? $"{dates[0].ToString("ddd d MMM yyyy", CultureInfo.CurrentCulture)}, {dates[0]:HH:mm}–{dates[^1]:HH:mm}"
+                ? $"{dates[0].ToString("ddd d MMM yyyy", CultureInfo.CurrentCulture)}, {dates[0].ToString(fmt, CultureInfo.CurrentCulture)}–{dates[^1].ToString(fmt, CultureInfo.CurrentCulture)}"
                 : $"{dates[0].ToString("d MMM yyyy", CultureInfo.CurrentCulture)} – {dates[^1].ToString("d MMM yyyy", CultureInfo.CurrentCulture)}";
         }
     }
@@ -382,10 +384,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var sidecarPaths = scan.Photos.SelectMany(p => p.SidecarPaths).ToList();
             var sidecars = sidecarPaths.Count > 0
                 ? await MetadataReader.ReadSidecarsAsync(_exifTool!, sidecarPaths)
-                : new Dictionary<string, GeoPoint?>();
+                : new Dictionary<string, SidecarMetadata>();
 
             var items = scan.Photos
-                .Select(src => new PhotoItemViewModel(src, meta.GetValueOrDefault(src.PrimaryPath), ResolveLocation(src, meta, sidecars)))
+                .Select(src =>
+                {
+                    var (date, offset) = ResolveDate(src, meta, sidecars);
+                    return new PhotoItemViewModel(src, meta.GetValueOrDefault(src.PrimaryPath), ResolveLocation(src, meta, sidecars), date, offset);
+                })
                 .OrderBy(p => p.DateTaken ?? DateTime.MaxValue)
                 .ThenBy(p => p.FileName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -421,7 +427,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_folderGpxFiles.Count > 0 && Settings.OfferFolderGpx)
             {
                 ShowInfo(FAInfoBarSeverity.Informational, "Track logs found",
-                    $"This folder contains {_folderGpxFiles.Count} GPX file{(_folderGpxFiles.Count == 1 ? "" : "s")}. Load {(_folderGpxFiles.Count == 1 ? "it" : "them")} to auto-tag photos by time?",
+                    $"This folder contains {_folderGpxFiles.Count} GPX file{(_folderGpxFiles.Count == 1 ? "" : "s")}. Load {(_folderGpxFiles.Count == 1 ? "it" : "them")} to " +
+                    (IsFilmMode ? "place your photos along the route?" : "auto-tag photos by time?"),
                     "Load track logs", () => LoadTracksAsync(_folderGpxFiles));
             }
             else if (items.Count == 0)
@@ -447,11 +454,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private static GeoPoint? ResolveLocation(PhotoSource src, Dictionary<string, PhotoMetadata> meta, Dictionary<string, GeoPoint?> sidecars)
+    private static (DateTime? Date, TimeSpan? Offset) ResolveDate(PhotoSource src, Dictionary<string, PhotoMetadata> meta,
+        Dictionary<string, SidecarMetadata> sidecars)
+    {
+        foreach (var s in src.SidecarPaths)
+            if (sidecars.TryGetValue(s, out var d) && d.DateTaken is not null) return (d.DateTaken, d.TimeZoneOffset);
+        var m = meta.GetValueOrDefault(src.PrimaryPath);
+        return (m?.DateTaken, m?.TimeZoneOffset);
+    }
+
+    private static GeoPoint? ResolveLocation(PhotoSource src, Dictionary<string, PhotoMetadata> meta, Dictionary<string, SidecarMetadata> sidecars)
     {
         // An XMP sidecar is what Lightroom & co. read for raw files, so it wins when it has a position.
         foreach (var s in src.SidecarPaths)
-            if (sidecars.TryGetValue(s, out var g) && g is not null) return g;
+            if (sidecars.TryGetValue(s, out var d) && d.Location is not null) return d.Location;
         return meta.GetValueOrDefault(src.PrimaryPath)?.Location;
     }
 
@@ -525,6 +541,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (errors.Count > 0)
             ShowInfo(FAInfoBarSeverity.Warning, "Some track logs couldn't be read", string.Join("\n", errors));
+        else if (loaded.Count > 0 && IsFilmMode)
+        {
+            ShowInfo(FAInfoBarSeverity.Success, $"Loaded {loaded.Count} track log{(loaded.Count == 1 ? "" : "s")}",
+                "Drag photos onto the track to set where and when each one was taken. Hover the track to see the time at any point.");
+        }
         else if (loaded.Count > 0)
         {
             int untimed = loaded.Sum(g => g.PointCount - g.TimedPointCount);
@@ -533,7 +554,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 HasPhotos ? "Auto-tag all photos" : null, HasPhotos ? () => { AutoTagAll(); return Task.CompletedTask; } : null);
         }
 
-        if (loaded.Count > 0 && Photos.All(p => !p.HasLocation)) FitToEverything();
+        if (loaded.Count > 0 && (IsFilmMode || Photos.All(p => !p.HasLocation))) FitToEverything();
     }
 
     [RelayCommand]
@@ -555,6 +576,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _trackLog = Tracks.Count > 0 ? TrackLog.FromFiles(Tracks.Select(t => t.File)) : null;
         MapTracks = Tracks.SelectMany(t => t.MapTracks).ToList();
         OnPropertyChanged(nameof(HasTracks));
+        OnPropertyChanged(nameof(ShowAutoTagControls));
+        OnPropertyChanged(nameof(FilmHint));
         AutoTagAllCommand.NotifyCanExecuteChanged();
         AutoTagSelectedCommand.NotifyCanExecuteChanged();
         UpdateMatchSummary();
@@ -679,6 +702,68 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             FitRequested?.Invoke(changes.Select(c => c.Item2.Location!.Value).ToList(), 17);
         }
         _ = changed;
+    }
+
+    // ------------------------------------------------------------------ Film mode
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDigitalMode), nameof(ShowAutoTagControls), nameof(TimeZoneLabel), nameof(FilmHint))]
+    private bool _isFilmMode;
+
+    public bool IsDigitalMode => !IsFilmMode;
+
+    public bool ShowAutoTagControls => HasTracks && !IsFilmMode;
+
+    public string TimeZoneLabel => IsFilmMode ? "Time zone for the photos' dates" : "Camera clock time zone";
+
+    public string FilmHint => HasTracks
+        ? "Film mode: drag photos onto the track to set where and when each was taken"
+        : "Film mode: add the GPX track you recorded while shooting, then drag photos onto it";
+
+    partial void OnIsFilmModeChanged(bool value)
+    {
+        Settings.FilmMode = value;
+        StatusText = value
+            ? "Film mode: dropping photos on the track sets their location, date taken and file dates."
+            : "Digital mode: photos keep their own capture times.";
+    }
+
+    /// <summary>Formats a track time in the photos' time zone (with the day if the tracks span several days).</summary>
+    public string FormatTrackTime(DateTimeOffset time)
+    {
+        var zone = Clock.ResolveTimeZone();
+        var local = TimeZoneInfo.ConvertTime(time, zone);
+        bool multiDay = _trackLog?.Start is { } s && _trackLog.End is { } e &&
+                        TimeZoneInfo.ConvertTime(s, zone).Date != TimeZoneInfo.ConvertTime(e, zone).Date;
+        return local.ToString(multiDay ? "ddd d MMM, HH:mm:ss" : "HH:mm:ss", CultureInfo.CurrentCulture);
+    }
+
+    /// <summary>
+    /// Film mode: gives photos the position and time of a point on the track. Several photos dropped
+    /// together get consecutive seconds so they stay in filmstrip order when sorted by date.
+    /// </summary>
+    public void FilmPlace(IReadOnlyList<PhotoItemViewModel> photos, TrackSnap snap)
+    {
+        if (photos.Count == 0) return;
+        var ordered = photos.OrderBy(p => Photos.IndexOf(p)).ToList();
+        var zone = Clock.ResolveTimeZone();
+        long ticks = snap.Time.UtcTicks;
+        long rounded = (ticks + TimeSpan.TicksPerSecond / 2) / TimeSpan.TicksPerSecond * TimeSpan.TicksPerSecond;
+        var start = new DateTimeOffset(rounded, TimeSpan.Zero);
+
+        var changes = ordered.Select((p, i) =>
+        {
+            var utc = start.AddSeconds(i);
+            return (p, PendingState.Film(snap.Location, utc, TimeZoneInfo.ConvertTime(utc, zone)));
+        }).ToList();
+
+        string when = FormatTrackTime(start);
+        string description = ordered.Count == 1 ? $"Set {ordered[0].FileName} to {when}" : $"Set {ordered.Count} photos to {when}";
+        Undo.Apply(description, changes);
+        OnPhotosChanged();
+        StatusText = $"{description} at {CoordinateFormatter.ToDecimal(snap.Location)}" +
+                     (ordered.Count > 1 ? " (one second apart, in filmstrip order)" : "") + ". Save to write to the files.";
+        if (!ordered.All(p => SelectedPhotos.Contains(p))) RequestSelection(ordered);
     }
 
     // ------------------------------------------------------------------ Editing
@@ -822,7 +907,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 await gate.WaitAsync();
                 try
                 {
-                    var result = await GeoWriter.WriteAsync(exifTool, p.Source, new GeoTagChange(intended.Location, intended.GpsTimeUtc), options);
+                    var result = await GeoWriter.WriteAsync(exifTool, p.Source,
+                        new GeoTagChange(intended.Location, intended.GpsTimeUtc, intended.CaptureTime), options);
                     results.Add((p, result, intended));
                 }
                 catch (Exception ex)
@@ -844,7 +930,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             var sources = ok.Select(r => r.Photo.Source).ToList();
             var meta = await MetadataReader.ReadMediaAsync(exifTool, sources.Select(s => s.PrimaryPath).ToList());
             var sidecarPaths = sources.SelectMany(s => s.SidecarPaths).ToList();
-            var sidecars = sidecarPaths.Count > 0 ? await MetadataReader.ReadSidecarsAsync(exifTool, sidecarPaths) : new Dictionary<string, GeoPoint?>();
+            var sidecars = sidecarPaths.Count > 0 ? await MetadataReader.ReadSidecarsAsync(exifTool, sidecarPaths) : new Dictionary<string, SidecarMetadata>();
 
             var problems = results.Where(r => !r.Result.Success).SelectMany(r => r.Result.Errors).ToList();
             int savedPhotos = 0;
@@ -852,11 +938,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             foreach (var (photo, result, intended) in ok)
             {
                 var actual = ResolveLocation(photo.Source, meta, sidecars);
-                bool matches = intended.Location is { } want
+                var (actualDate, actualOffset) = ResolveDate(photo.Source, meta, sidecars);
+                bool locationOk = intended.Location is { } want
                     ? actual is { } got && Math.Abs(got.Latitude - want.Latitude) < 2e-5 && Math.Abs(got.Longitude - want.Longitude) < 2e-5
                     : actual is null;
+                bool dateOk = intended.CaptureTime is not { } wantDate ||
+                              actualDate is { } gotDate && Math.Abs((gotDate - wantDate.DateTime).TotalSeconds) < 1;
+                bool matches = locationOk && dateOk;
                 photo.OriginalLocation = actual;
-                if (matches)
+                photo.OriginalDateTaken = actualDate;
+                photo.OriginalTimeZoneOffset = actualOffset;
+                if (!dateOk)
+                {
+                    problems.Add($"{photo.FileName}: the date taken reads back as {actualDate?.ToString("g", CultureInfo.CurrentCulture) ?? "nothing"} after saving.");
+                }
+                else if (matches)
                 {
                     // Only clear the pending edit if it wasn't changed while saving.
                     if (photo.Pending == intended) photo.Pending = PendingState.None;

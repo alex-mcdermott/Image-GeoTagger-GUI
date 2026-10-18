@@ -2,6 +2,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Geotagger.Core.Geo;
+using Geotagger.Core.Gpx;
 
 namespace Geotagger.Map;
 
@@ -37,7 +38,11 @@ public sealed class MapMarker
 public sealed class MapTrack
 {
     public MapTrack(IEnumerable<GeoPoint> points, Color color, string name)
+        : this(points.Select(p => new GpxTrackPoint(p.Latitude, p.Longitude, p.Altitude, null)).ToList(), color, name) { }
+
+    public MapTrack(IReadOnlyList<GpxTrackPoint> points, Color color, string name)
     {
+        Points = points;
         var xs = new List<double>();
         var ys = new List<double>();
         foreach (var p in points)
@@ -54,9 +59,13 @@ public sealed class MapTrack
 
     public double[] Xs { get; }
     public double[] Ys { get; }
+    public IReadOnlyList<GpxTrackPoint> Points { get; }
     public Color Color { get; }
     public string Name { get; }
 }
+
+/// <summary>A position on a track log under the pointer, interpolated between fixes (film mode).</summary>
+public sealed record TrackSnap(GeoPoint Location, DateTimeOffset Time, string TrackName);
 
 public sealed class MapMarkersEventArgs(IReadOnlyList<MapMarker> markers, KeyModifiers modifiers) : EventArgs
 {
@@ -64,14 +73,20 @@ public sealed class MapMarkersEventArgs(IReadOnlyList<MapMarker> markers, KeyMod
     public KeyModifiers Modifiers { get; } = modifiers;
 }
 
-public sealed class MapMarkersMovedEventArgs(IReadOnlyList<MapMarker> markers, GeoPoint to) : EventArgs
+public sealed class MapMarkersMovedEventArgs(IReadOnlyList<MapMarker> markers, GeoPoint to, TrackSnap? snap = null) : EventArgs
 {
     public IReadOnlyList<MapMarker> Markers { get; } = markers;
     public GeoPoint To { get; } = to;
+
+    /// <summary>The track position the pin was dropped on, when snapping to tracks.</summary>
+    public TrackSnap? Snap { get; } = snap;
 }
 
-public sealed class MapDropEventArgs(IDataTransfer data, GeoPoint location) : EventArgs
+public sealed class MapDropEventArgs(IDataTransfer data, GeoPoint location, TrackSnap? snap = null) : EventArgs
 {
     public IDataTransfer Data { get; } = data;
     public GeoPoint Location { get; } = location;
+
+    /// <summary>The track position under the drop, when snapping to tracks.</summary>
+    public TrackSnap? Snap { get; } = snap;
 }

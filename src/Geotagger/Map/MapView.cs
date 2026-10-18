@@ -34,6 +34,12 @@ public sealed class MapView : Control
     public static readonly StyledProperty<TileCache?> TileCacheProperty =
         AvaloniaProperty.Register<MapView, TileCache?>(nameof(TileCache));
 
+    /// <summary>Film mode: drops and pin drags snap onto track logs and carry the time of that point.</summary>
+    public static readonly StyledProperty<bool> SnapToTracksProperty =
+        AvaloniaProperty.Register<MapView, bool>(nameof(SnapToTracks));
+
+    private const double SnapDistance = 30;
+
     private static readonly Geometry PinGeometry =
         Geometry.Parse("M0,0 C-2.5,-6 -11,-12.5 -11,-21.5 A11,11 0 1 1 11,-21.5 C11,-12.5 2.5,-6 0,0 Z");
     private const double PinHeadY = -21.5;
@@ -74,6 +80,8 @@ public sealed class MapView : Control
     private Point _boxEnd;
     private MapMarker? _hoverMarker;
     private Point? _dropGhost;
+    private TrackSnap? _snap;
+    private Point _snapScreen;
     private int _dropCount;
 
     private readonly List<Cluster> _clusters = [];
@@ -81,7 +89,7 @@ public sealed class MapView : Control
 
     static MapView()
     {
-        AffectsRender<MapView>(MapStyleProperty, MarkersProperty, TracksProperty, SearchPinProperty);
+        AffectsRender<MapView>(MapStyleProperty, MarkersProperty, TracksProperty, SearchPinProperty, SnapToTracksProperty);
         FocusableProperty.OverrideDefaultValue<MapView>(true);
         ClipToBoundsProperty.OverrideDefaultValue<MapView>(true);
     }
@@ -98,6 +106,13 @@ public sealed class MapView : Control
     public MapStyle MapStyle { get => GetValue(MapStyleProperty); set => SetValue(MapStyleProperty, value); }
     public IReadOnlyList<MapMarker>? Markers { get => GetValue(MarkersProperty); set => SetValue(MarkersProperty, value); }
     public IReadOnlyList<MapTrack>? Tracks { get => GetValue(TracksProperty); set => SetValue(TracksProperty, value); }
+    public bool SnapToTracks { get => GetValue(SnapToTracksProperty); set => SetValue(SnapToTracksProperty, value); }
+
+    /// <summary>Formats a track time for the snap label (e.g. in the photos' time zone).</summary>
+    public Func<DateTimeOffset, string>? FormatTime { get; set; }
+
+    /// <summary>The track position under the last right-click, when snapping to tracks.</summary>
+    public TrackSnap? ContextSnap { get; private set; }
     public GeoPoint? SearchPin { get => GetValue(SearchPinProperty); set => SetValue(SearchPinProperty, value); }
     public TileCache? TileCache { get => GetValue(TileCacheProperty); set => SetValue(TileCacheProperty, value); }
 
@@ -316,11 +331,17 @@ public sealed class MapView : Control
 
         if (SearchPin is { } sp) DrawPin(ctx, GeoToScreen(sp), SearchColor, 1.15, WhitePen, null, 1);
 
+        if (SnapToTracks && _snap is not null) DrawSnapIndicator(ctx, w);
+
         if (_mode == PressMode.MarkerDrag && _dragMarkers is not null)
         {
             int count = _dragMarkers.Sum(m => m.Photos.Count);
-            bool pending = true;
-            DrawPin(ctx, _dragPoint - _dragOffset, pending ? PendingColor : SavedColor, 1.3, SelectedPen, count > 1 ? Count(count) : null, 0.9);
+            if (!SnapToTracks)
+                DrawPin(ctx, _dragPoint - _dragOffset, PendingColor, 1.3, SelectedPen, count > 1 ? Count(count) : null, 0.9);
+            else if (_snap is not null)
+                DrawPin(ctx, _snapScreen, PendingColor, 1.3, SelectedPen, count > 1 ? Count(count) : null, 0.9);
+            else // off the track: releasing here leaves the pin where it was
+                DrawPin(ctx, _dragPoint - _dragOffset, SavedColor, 1.1, WhitePen, null, 0.35);
         }
 
         if (_dropGhost is { } g)
@@ -544,6 +565,7 @@ public sealed class MapView : Control
         var dates = photos.Where(p => p.DateTaken.HasValue).Select(p => p.DateTaken!.Value).OrderBy(d => d).ToList();
         string subtitle = dates.Count == 0 ? "" :
             dates[0] == dates[^1] ? dates[0].ToString("g", CultureInfo.CurrentCulture) :
+            dates[0].Date == dates[^1].Date && (dates[^1] - dates[0]).TotalMinutes < 1 ? $"{dates[0]:d}  {dates[0]:T} – {dates[^1]:T}" :
             dates[0].Date == dates[^1].Date ? $"{dates[0]:d}  {dates[0]:t} – {dates[^1]:t}" :
             $"{dates[0]:d} – {dates[^1]:d}";
         if (!c.SingleLocation) subtitle += (subtitle.Length > 0 ? " · " : "") + "double-click to zoom";
@@ -607,6 +629,95 @@ public sealed class MapView : Control
         return fallback.Y < margin ? candidates[1] : fallback;
     }
 
+    // ---------------------------------------------------------------- Track snapping (film mode)
+
+    /// <summary>
+    /// Finds the closest point on any timed track within <paramref name="maxDistance"/> pixels of
+    /// <paramref name="p"/>, interpolating position, elevation and time between fixes.
+    /// </summary>
+    public TrackSnap? SnapAt(Point p, double maxDistance = SnapDistance)
+    {
+        var tracks = Tracks;
+        if (tracks is null || Bounds.Width <= 0) return null;
+        double ws = WorldSize, w2 = Bounds.Width / 2, h2 = Bounds.Height / 2;
+        double best = maxDistance * maxDistance;
+        MapTrack? bestTrack = null;
+        int bestIndex = -1;
+        double bestF = 0;
+
+        foreach (var t in tracks)
+        {
+            int n = t.Xs.Length;
+            if (n == 0 || t.Points.Count != n) continue;
+            double offset = -Math.Round(t.Xs[0] - _cx);
+            double ax = (t.Xs[0] + offset - _cx) * ws + w2, ay = (t.Ys[0] - _cy) * ws + h2;
+            if (n == 1)
+            {
+                double d1 = (p.X - ax) * (p.X - ax) + (p.Y - ay) * (p.Y - ay);
+                if (d1 < best && t.Points[0].Time is not null) { best = d1; bestTrack = t; bestIndex = 0; bestF = 0; }
+                continue;
+            }
+            for (int i = 1; i < n; i++)
+            {
+                double bx = (t.Xs[i] + offset - _cx) * ws + w2, by = (t.Ys[i] - _cy) * ws + h2;
+                double dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+                double f = len2 > 0 ? Math.Clamp(((p.X - ax) * dx + (p.Y - ay) * dy) / len2, 0, 1) : 0;
+                double qx = ax + dx * f - p.X, qy = ay + dy * f - p.Y;
+                double d = qx * qx + qy * qy;
+                if (d < best && t.Points[i - 1].Time is not null && t.Points[i].Time is not null)
+                {
+                    best = d; bestTrack = t; bestIndex = i - 1; bestF = f;
+                }
+                ax = bx; ay = by;
+            }
+        }
+        if (bestTrack is null) return null;
+
+        int next = Math.Min(bestIndex + 1, bestTrack.Xs.Length - 1);
+        var a = bestTrack.Points[bestIndex];
+        var b = bestTrack.Points[next];
+        double x = bestTrack.Xs[bestIndex] + (bestTrack.Xs[next] - bestTrack.Xs[bestIndex]) * bestF;
+        double y = bestTrack.Ys[bestIndex] + (bestTrack.Ys[next] - bestTrack.Ys[bestIndex]) * bestF;
+        var geo = WebMercator.Unproject(x - Math.Floor(x), y);
+        double? ele = a.Elevation is { } ea && b.Elevation is { } eb ? ea + (eb - ea) * bestF : a.Elevation ?? b.Elevation;
+        var ta = a.Time!.Value;
+        var time = ta + TimeSpan.FromTicks((long)((b.Time!.Value - ta).Ticks * bestF));
+        return new TrackSnap(geo with { Altitude = ele }, time, bestTrack.Name);
+    }
+
+    private void UpdateSnap(Point p)
+    {
+        var snap = SnapToTracks ? SnapAt(p) : null;
+        if (snap is null && _snap is null) return;
+        _snap = snap;
+        if (snap is not null) _snapScreen = GeoToScreen(snap.Location);
+        InvalidateVisual();
+    }
+
+    private void ClearSnap()
+    {
+        if (_snap is null) return;
+        _snap = null;
+        InvalidateVisual();
+    }
+
+    private void DrawSnapIndicator(DrawingContext ctx, double w)
+    {
+        var snap = _snap!;
+        var c = _snapScreen;
+        ctx.DrawEllipse(Brushes.White, new Pen(new SolidColorBrush(PendingColor), 3), c, 7, 7);
+
+        string label = FormatTime?.Invoke(snap.Time) ?? snap.Time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture);
+        var text = Text(label, 12.5, Brushes.White, FontWeight.SemiBold);
+        double bw = text.Width + 18, bh = text.Height + 8;
+        double x = Math.Clamp(c.X + 14, 4, Math.Max(4, w - bw - 4));
+        double y = c.Y - bh - 12;
+        if (y < 4) y = c.Y + 12;
+        var r = new Rect(x, y, bw, bh);
+        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(0xE6, 0x20, 0x20, 0x20)), new Pen(new SolidColorBrush(PendingColor), 1.5), r, bh / 2, bh / 2);
+        ctx.DrawText(text, new Point(r.X + 9, r.Y + 4));
+    }
+
     private void DrawScaleBar(DrawingContext ctx, double h, bool dark)
     {
         double mpp = WebMercator.MetersPerPixel(Center.Latitude, _zoom);
@@ -663,6 +774,7 @@ public sealed class MapView : Control
         {
             ContextLocation = ScreenToGeo(p);
             ContextMarkers = HitTest(p)?.Markers.ToList();
+            ContextSnap = SnapToTracks ? SnapAt(p) : null;
             return;
         }
         if (!point.Properties.IsLeftButtonPressed) return;
@@ -708,11 +820,13 @@ public sealed class MapView : Control
                     _hoverMarker = marker;
                     InvalidateVisual();
                 }
+                if (hit is null) UpdateSnap(p); else ClearSnap();
                 Cursor = hit is not null ? HandCursor : null;
                 return;
             }
             case PressMode.Pan:
             {
+                ClearSnap();
                 double ws = WorldSize;
                 _cx = _panStartCx - (p.X - _pressPoint.X) / ws;
                 _cy = _panStartCy - (p.Y - _pressPoint.Y) / ws;
@@ -742,6 +856,7 @@ public sealed class MapView : Control
             }
             case PressMode.MarkerDrag:
                 _dragPoint = p;
+                if (SnapToTracks) UpdateSnap(p - _dragOffset);
                 InvalidateVisual();
                 return;
             case PressMode.Box:
@@ -768,8 +883,17 @@ public sealed class MapView : Control
                 MarkersClicked?.Invoke(this, new MapMarkersEventArgs(_pressCluster.Markers.ToList(), e.KeyModifiers));
                 break;
             case PressMode.MarkerDrag when _dragMarkers is not null:
-                var target = ScreenToGeo(p - _dragOffset);
-                MarkersMoved?.Invoke(this, new MapMarkersMovedEventArgs(_dragMarkers, target));
+                if (SnapToTracks)
+                {
+                    // In film mode a pin only moves if it lands on the track.
+                    if (SnapAt(p - _dragOffset) is { } snap)
+                        MarkersMoved?.Invoke(this, new MapMarkersMovedEventArgs(_dragMarkers, snap.Location, snap));
+                }
+                else
+                {
+                    MarkersMoved?.Invoke(this, new MapMarkersMovedEventArgs(_dragMarkers, ScreenToGeo(p - _dragOffset)));
+                }
+                ClearSnap();
                 break;
             case PressMode.Box:
             {
@@ -807,6 +931,7 @@ public sealed class MapView : Control
             _hoverMarker = null;
             InvalidateVisual();
         }
+        if (_mode == PressMode.None) ClearSnap();
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -849,25 +974,50 @@ public sealed class MapView : Control
             if (_dropGhost is not null) { _dropGhost = null; InvalidateVisual(); }
             return;
         }
-        e.DragEffects &= DragDropEffects.Link | DragDropEffects.Copy;
-        _dropGhost = e.GetPosition(this);
-        _dropCount = n;
         e.Handled = true;
+        _dropCount = n;
+        var p = e.GetPosition(this);
+        if (SnapToTracks)
+        {
+            UpdateSnap(p);
+            if (_snap is null)
+            {
+                // Film mode: photos can only be dropped onto a track.
+                e.DragEffects = DragDropEffects.None;
+                _dropGhost = null;
+                InvalidateVisual();
+                return;
+            }
+            p = _snapScreen;
+        }
+        e.DragEffects &= DragDropEffects.Link | DragDropEffects.Copy;
+        _dropGhost = p;
         InvalidateVisual();
     }
 
     private void OnDragLeave(object? sender, DragEventArgs e)
     {
         _dropGhost = null;
+        _snap = null;
         InvalidateVisual();
     }
 
     private void OnDrop(object? sender, DragEventArgs e)
     {
         _dropGhost = null;
+        _snap = null;
         InvalidateVisual();
         if ((DropItemCount?.Invoke(e.DataTransfer) ?? 0) <= 0) return;
-        ItemsDropped?.Invoke(this, new MapDropEventArgs(e.DataTransfer, ScreenToGeo(e.GetPosition(this))));
+        var p = e.GetPosition(this);
+        if (SnapToTracks)
+        {
+            if (SnapAt(p) is { } snap)
+                ItemsDropped?.Invoke(this, new MapDropEventArgs(e.DataTransfer, snap.Location, snap));
+        }
+        else
+        {
+            ItemsDropped?.Invoke(this, new MapDropEventArgs(e.DataTransfer, ScreenToGeo(p)));
+        }
         e.Handled = true;
     }
 }
