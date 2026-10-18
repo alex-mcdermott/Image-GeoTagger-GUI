@@ -21,6 +21,10 @@ public sealed class AppSettings
     public double ToleranceMinutes { get; set; } = 10;
     public bool ReplaceExistingLocations { get; set; }
     public bool FilmMode { get; set; }
+
+    /// <summary>Your home location. Stored only in this user's settings file.</summary>
+    public double? HomeLatitude { get; set; }
+    public double? HomeLongitude { get; set; }
     public string? LastFolder { get; set; }
     public List<string> RecentFolders { get; set; } = [];
     public double? MapLatitude { get; set; }

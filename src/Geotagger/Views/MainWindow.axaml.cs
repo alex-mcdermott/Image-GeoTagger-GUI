@@ -232,6 +232,7 @@ public partial class MainWindow : FAAppWindow, IUiServices
             CloseButtonText = "Cancel",
             DefaultButton = FAContentDialogButton.Primary,
         };
+        settings.PropertyChanged += (_, _) => dialog.IsPrimaryButtonEnabled = settings.CanSave;
         return await dialog.ShowAsync(this) == FAContentDialogResult.Primary;
     }
 

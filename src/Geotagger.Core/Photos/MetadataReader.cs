@@ -17,6 +17,7 @@ public sealed record PhotoMetadata
     public string? Lens { get; init; }
     public int? Width { get; init; }
     public int? Height { get; init; }
+    public TimeSpan? Duration { get; init; }
 
     public string? Camera
     {
@@ -86,7 +87,77 @@ public static class MetadataReader
             progress?.Report(done);
         });
         await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        var videos = files.Where(SupportedFormats.IsVideo).ToList();
+        foreach (var batch in videos.Chunk(BatchSize))
+        {
+            var r = await exifTool.ExecuteAsync(BuildVideoArgs(batch), ct).ConfigureAwait(false);
+            foreach (var (path, merge) in ParseVideoJson(r.Output))
+                if (result.TryGetValue(path, out var baseMeta)) result[path] = merge(baseMeta);
+        }
         return result;
+    }
+
+    public static IReadOnlyList<string> BuildVideoArgs(IEnumerable<string> files) =>
+    [
+        "-json", "-n", "-G1", "-a", "-api", "QuickTimeUTC=1", "-charset", "filename=utf8",
+        "-XMP-exif:GPSLatitude", "-XMP-exif:GPSLongitude", "-XMP-exif:GPSAltitude", "-XMP-exif:GPSAltitudeRef",
+        "-Keys:GPSCoordinates", "-UserData:GPSCoordinates", "-ItemList:GPSCoordinates",
+        "-XMP-exif:DateTimeOriginal", "-Keys:CreationDate", "-QuickTime:CreateDate", "-QuickTime:Duration",
+        .. files,
+    ];
+
+    /// <summary>
+    /// Video-specific metadata layered over the generic read. Location: XMP, then Apple Keys, then
+    /// ©xyz, then the camera's embedded GPS. Date: XMP, Apple Keys, the camera's EXIF date, then the
+    /// QuickTime creation date (stored as UTC; converted to local time by exiftool).
+    /// </summary>
+    internal static IEnumerable<(string Path, Func<PhotoMetadata, PhotoMetadata> Merge)> ParseVideoJson(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) yield break;
+        using var doc = JsonDocument.Parse(json);
+        foreach (var e in doc.RootElement.EnumerateArray())
+        {
+            string? source = GetString(e, "SourceFile");
+            if (source is null) continue;
+
+            GeoPoint? location = null;
+            if (GetDouble(e, "XMP-exif:GPSLatitude") is { } lat && GetDouble(e, "XMP-exif:GPSLongitude") is { } lon)
+            {
+                double? alt = GetDouble(e, "XMP-exif:GPSAltitude");
+                if (alt is { } a && GetDouble(e, "XMP-exif:GPSAltitudeRef") == 1) alt = -Math.Abs(a);
+                location = new GeoPoint(lat, lon, alt);
+            }
+            location ??= ParseIso6709(GetString(e, "Keys:GPSCoordinates"))
+                         ?? ParseIso6709(GetString(e, "UserData:GPSCoordinates"))
+                         ?? ParseIso6709(GetString(e, "ItemList:GPSCoordinates"));
+            if (location is { } l && (!l.IsValid || (l.Latitude == 0 && l.Longitude == 0))) location = null;
+
+            string? date = GetString(e, "XMP-exif:DateTimeOriginal") ?? GetString(e, "Keys:CreationDate");
+            string? quickTime = GetString(e, "QuickTime:CreateDate");
+            double? seconds = GetDouble(e, "QuickTime:Duration");
+
+            yield return (NormalisePath(source), m => m with
+            {
+                Location = location ?? m.Location,
+                DateTaken = ParseExifDate(date) ?? m.DateTaken ?? ParseExifDate(quickTime),
+                TimeZoneOffset = date is not null ? ParseTrailingOffset(date) : m.DateTaken is null ? ParseTrailingOffset(quickTime) : m.TimeZoneOffset,
+                Duration = seconds is { } d && d > 0 ? TimeSpan.FromSeconds(d) : m.Duration,
+            });
+        }
+    }
+
+    /// <summary>Parses exiftool's numeric GPSCoordinates ("lat lon [alt]").</summary>
+    internal static GeoPoint? ParseIso6709(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var parts = s.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2 ||
+            !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) ||
+            !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+            return null;
+        double? alt = parts.Length > 2 && double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double a) ? a : null;
+        return new GeoPoint(lat, lon, alt);
     }
 
     /// <summary>Reads GPS positions and capture dates from XMP sidecars; result is keyed by sidecar path.</summary>
@@ -194,7 +265,7 @@ public static class MetadataReader
         if (string.IsNullOrWhiteSpace(s)) return null;
         s = s.Trim();
         if (s.EndsWith('Z')) return TimeSpan.Zero;
-        return s.Length >= 25 ? ParseOffset(s[^6..]) : null;
+        return s.Length >= 25 && s[^6] is '+' or '-' ? ParseOffset(s[^6..]) : null;
     }
 
     internal static TimeSpan? ParseOffset(string? s)

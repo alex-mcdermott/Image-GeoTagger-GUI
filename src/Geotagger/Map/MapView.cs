@@ -34,6 +34,12 @@ public sealed class MapView : Control
     public static readonly StyledProperty<TileCache?> TileCacheProperty =
         AvaloniaProperty.Register<MapView, TileCache?>(nameof(TileCache));
 
+    public static readonly StyledProperty<GeoPoint?> HomeLocationProperty =
+        AvaloniaProperty.Register<MapView, GeoPoint?>(nameof(HomeLocation));
+
+    private static readonly Color HomeColor = Color.FromRgb(0x10, 0x7C, 0x41);
+    private static readonly Geometry HouseGlyph = Geometry.Parse("M0,-27.5 L-6.5,-21.5 L-4.5,-21.5 L-4.5,-16 L4.5,-16 L4.5,-21.5 L6.5,-21.5 Z");
+
     /// <summary>Film mode: drops and pin drags snap onto track logs and carry the time of that point.</summary>
     public static readonly StyledProperty<bool> SnapToTracksProperty =
         AvaloniaProperty.Register<MapView, bool>(nameof(SnapToTracks));
@@ -89,7 +95,7 @@ public sealed class MapView : Control
 
     static MapView()
     {
-        AffectsRender<MapView>(MapStyleProperty, MarkersProperty, TracksProperty, SearchPinProperty, SnapToTracksProperty);
+        AffectsRender<MapView>(MapStyleProperty, MarkersProperty, TracksProperty, SearchPinProperty, SnapToTracksProperty, HomeLocationProperty);
         FocusableProperty.OverrideDefaultValue<MapView>(true);
         ClipToBoundsProperty.OverrideDefaultValue<MapView>(true);
     }
@@ -107,6 +113,16 @@ public sealed class MapView : Control
     public IReadOnlyList<MapMarker>? Markers { get => GetValue(MarkersProperty); set => SetValue(MarkersProperty, value); }
     public IReadOnlyList<MapTrack>? Tracks { get => GetValue(TracksProperty); set => SetValue(TracksProperty, value); }
     public bool SnapToTracks { get => GetValue(SnapToTracksProperty); set => SetValue(SnapToTracksProperty, value); }
+    public GeoPoint? HomeLocation { get => GetValue(HomeLocationProperty); set => SetValue(HomeLocationProperty, value); }
+
+    /// <summary>The home location if <paramref name="p"/> is on (or very near) the home pin.</summary>
+    private GeoPoint? HomeAt(Point p)
+    {
+        if (HomeLocation is not { } home) return null;
+        var h = GeoToScreen(home);
+        double dx = p.X - h.X, dy = p.Y - (h.Y + PinHeadY);
+        return dx * dx + dy * dy <= 22 * 22 || (Math.Abs(p.X - h.X) <= 14 && Math.Abs(p.Y - h.Y) <= 14) ? home : null;
+    }
 
     /// <summary>Formats a track time for the snap label (e.g. in the photos' time zone).</summary>
     public Func<DateTimeOffset, string>? FormatTime { get; set; }
@@ -326,6 +342,7 @@ public sealed class MapView : Control
             DrawTiles(ctx, w, h);
 
         DrawTracks(ctx, w, h);
+        if (HomeLocation is { } home) DrawHomePin(ctx, GeoToScreen(home)); // under the photo pins
         BuildClusters(w, h);
         DrawClusters(ctx);
 
@@ -519,6 +536,15 @@ public sealed class MapView : Control
             DrawPin(ctx, new Point(c.Sx, c.Sy), c.Pending ? PendingColor : SavedColor, scale,
                 c.Selected ? SelectedPen : WhitePen, c.Count > 1 ? Count(c.Count) : null, opacity);
         }
+    }
+
+    private void DrawHomePin(DrawingContext ctx, Point tip)
+    {
+        using var _ = ctx.PushTransform(Matrix.CreateScale(1.15, 1.15) * Matrix.CreateTranslation(tip.X, tip.Y));
+        using (ctx.PushTransform(Matrix.CreateTranslation(1, 2)))
+            ctx.DrawGeometry(ShadowBrush, null, PinGeometry);
+        ctx.DrawGeometry(new SolidColorBrush(HomeColor), WhitePen, PinGeometry);
+        ctx.DrawGeometry(Brushes.White, null, HouseGlyph);
     }
 
     private static string Count(int n) => n > 999 ? "999+" : n.ToString(CultureInfo.InvariantCulture);
@@ -891,7 +917,7 @@ public sealed class MapView : Control
                 }
                 else
                 {
-                    MarkersMoved?.Invoke(this, new MapMarkersMovedEventArgs(_dragMarkers, ScreenToGeo(p - _dragOffset)));
+                    MarkersMoved?.Invoke(this, new MapMarkersMovedEventArgs(_dragMarkers, HomeAt(p - _dragOffset) ?? ScreenToGeo(p - _dragOffset)));
                 }
                 ClearSnap();
                 break;
@@ -990,6 +1016,10 @@ public sealed class MapView : Control
             }
             p = _snapScreen;
         }
+        else if (HomeAt(p) is { } home)
+        {
+            p = GeoToScreen(home);
+        }
         e.DragEffects &= DragDropEffects.Link | DragDropEffects.Copy;
         _dropGhost = p;
         InvalidateVisual();
@@ -1016,7 +1046,7 @@ public sealed class MapView : Control
         }
         else
         {
-            ItemsDropped?.Invoke(this, new MapDropEventArgs(e.DataTransfer, ScreenToGeo(p)));
+            ItemsDropped?.Invoke(this, new MapDropEventArgs(e.DataTransfer, HomeAt(p) ?? ScreenToGeo(p)));
         }
         e.Handled = true;
     }

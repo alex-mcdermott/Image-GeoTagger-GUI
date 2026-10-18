@@ -80,16 +80,21 @@
                        Tracks="{Binding MapTracks}"
                        SearchPin="{Binding SearchPin}"
                        SnapToTracks="{Binding IsFilmMode}"
+                       HomeLocation="{Binding HomeLocation}"
                        TileCache="{Binding TileCache}">
             <map:MapView.ContextFlyout>
               <MenuFlyout>
                 <MenuItem Name="PlaceHereMenuItem" Header="Place selected photos here" Click="OnPlaceHereClick">
                   <MenuItem.Icon><ui:FASymbolIcon Symbol="MapPin" /></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="Place selected photos at home" Command="{Binding PlaceSelectionAtHomeCommand}" IsVisible="{Binding HasHomeLocation}">
+                  <MenuItem.Icon><ui:FASymbolIcon Symbol="Home" /></MenuItem.Icon>
+                </MenuItem>
                 <MenuItem Name="SelectHereMenuItem" Header="Select photos at this pin" Click="OnSelectHereClick" />
                 <MenuItem Header="Copy coordinates" Click="OnCopyContextCoordinatesClick">
                   <MenuItem.Icon><ui:FASymbolIcon Symbol="Copy" /></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="Set home location here" Click="OnSetHomeClick" />
                 <Separator />
                 <MenuItem Header="Zoom to all photos" Command="{Binding ZoomToPhotosCommand}">
                   <MenuItem.Icon><ui:FASymbolIcon Symbol="ZoomOut" /></MenuItem.Icon>
@@ -258,6 +263,10 @@
                   <Button Classes="subtle" Command="{Binding CopyCoordinatesCommand}" Margin="0,0,4,4">
                     <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Copy" FontSize="14" /><TextBlock Text="Copy" /></StackPanel>
                   </Button>
+                  <Button Classes="subtle" Command="{Binding PlaceSelectionAtHomeCommand}" IsVisible="{Binding HasHomeLocation}" Margin="0,0,4,4"
+                          ToolTip.Tip="Give the selected photos your home location (Ctrl+H)">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Home" FontSize="14" /><TextBlock Text="Home" /></StackPanel>
+                  </Button>
                   <Button Classes="subtle" Command="{Binding RemoveLocationCommand}" Margin="0,0,4,4">
                     <StackPanel Orientation="Horizontal" Spacing="6"><ui:FASymbolIcon Symbol="Delete" FontSize="14" /><TextBlock Text="Remove" /></StackPanel>
                   </Button>
@@ -392,6 +401,12 @@
                       </Border>
                       <Border Classes="badge removal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5" IsVisible="{Binding IsPendingRemoval}">
                         <ui:FASymbolIcon Symbol="Dismiss" FontSize="10" Foreground="White" />
+                      </Border>
+                      <Border Classes="formatTag" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="5" IsVisible="{Binding IsVideo}">
+                        <StackPanel Orientation="Horizontal" Spacing="3">
+                          <ui:FASymbolIcon Symbol="Play" FontSize="9" Foreground="White" />
+                          <TextBlock Text="{Binding DurationText}" />
+                        </StackPanel>
                       </Border>
                       <Border Classes="formatTag" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="5">
                         <StackPanel Orientation="Horizontal">

@@ -278,6 +278,11 @@ public partial class MainView : UserControl
         }
     }
 
+    private void OnSetHomeClick(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is not null && Map.ContextLocation is { } p) _vm.SetHomeLocation(p);
+    }
+
     private void OnSelectHereClick(object? sender, RoutedEventArgs e)
     {
         if (_vm is not null && Map.ContextMarkers is { } markers) _vm.SelectFromMap(markers, KeyModifiers.None);
@@ -317,6 +322,7 @@ public partial class MainView : UserControl
                 case Key.F: SearchBox.Focus(); SearchBox.SelectAll(); break;
                 case Key.OemComma: _vm.OpenSettingsCommand.Execute(null); break;
                 case Key.M: _vm.IsFilmMode = !_vm.IsFilmMode; break;
+                case Key.H when !inText: _vm.PlaceSelectionAtHomeCommand.Execute(null); break;
                 case Key.Z when !inText: _vm.UndoEditCommand.Execute(null); break;
                 case Key.Y when !inText: _vm.RedoEditCommand.Execute(null); break;
                 case Key.A when !inText: _vm.SelectAllCommand.Execute(null); break;

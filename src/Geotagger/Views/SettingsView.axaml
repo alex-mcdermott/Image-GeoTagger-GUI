@@ -30,6 +30,18 @@
       </StackPanel>
 
       <StackPanel Spacing="6">
+        <TextBlock Classes="cardHeader" Text="Home location" />
+        <TextBlock Classes="caption" TextWrapping="Wrap"
+                   Text="One click (or Ctrl+H) gives selected photos this location, handy for photos taken at home. It's saved only in your settings on this computer, never in the project or its repository." />
+        <Grid ColumnDefinitions="*,6,Auto">
+          <TextBox Text="{Binding HomeText}" PlaceholderText="Paste coordinates or a map link, e.g. 51.5007, -0.1246" />
+          <Button Grid.Column="2" Content="Clear" Command="{Binding ClearHomeCommand}" />
+        </Grid>
+        <TextBlock Classes="error" Text="{Binding HomeError}" IsVisible="{Binding HomeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="Tip: right-click the map and choose &quot;Set home location here&quot;." />
+      </StackPanel>
+
+      <StackPanel Spacing="6">
         <TextBlock Classes="cardHeader" Text="Opening folders" />
         <CheckBox IsChecked="{Binding PairRawWithJpeg}">
           <StackPanel>

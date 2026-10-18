@@ -16,12 +16,20 @@ public static class SupportedFormats
         ".jpg", ".jpeg", ".heic", ".heif", ".hif", ".tif", ".tiff", ".png", ".webp", ".avif", ".jxl",
     };
 
+    /// <summary>QuickTime/MP4-family videos, which exiftool can write GPS and dates into.</summary>
+    public static readonly IReadOnlySet<string> VideoExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mov", ".mp4", ".m4v", ".3gp", ".3g2",
+    };
+
     public static bool IsRaw(string path) => RawExtensions.Contains(Path.GetExtension(path));
+
+    public static bool IsVideo(string path) => VideoExtensions.Contains(Path.GetExtension(path));
 
     public static bool IsSupported(string path)
     {
         string ext = Path.GetExtension(path);
-        return RawExtensions.Contains(ext) || ImageExtensions.Contains(ext);
+        return RawExtensions.Contains(ext) || ImageExtensions.Contains(ext) || VideoExtensions.Contains(ext);
     }
 
     /// <summary>Raw formats Adobe tools expect sidecars for (DNG stores XMP internally).</summary>

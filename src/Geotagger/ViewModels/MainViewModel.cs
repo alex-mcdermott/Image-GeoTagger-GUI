@@ -72,6 +72,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _toleranceMinutes = settings.ToleranceMinutes;
         _replaceExistingLocations = settings.ReplaceExistingLocations;
         _isFilmMode = settings.FilmMode;
+        if (settings.HomeLatitude is { } homeLat && settings.HomeLongitude is { } homeLon)
+            _homeLocation = new GeoPoint(homeLat, homeLon);
         _filter = Filters[0];
         _mapStyle = MapStyles.ById(settings.MapStyle);
     }
@@ -103,7 +105,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection), nameof(IsSingleSelection), nameof(IsMultiSelection), nameof(SelectedPhoto), nameof(PhotoCountText))]
     [NotifyCanExecuteChangedFor(nameof(RemoveLocationCommand), nameof(RevertSelectionCommand), nameof(AutoTagSelectedCommand),
-        nameof(ApplyCoordinatesCommand), nameof(CopyCoordinatesCommand), nameof(ShowSelectionOnMapCommand), nameof(PlaceSelectionAtSearchPinCommand))]
+        nameof(ApplyCoordinatesCommand), nameof(CopyCoordinatesCommand), nameof(ShowSelectionOnMapCommand), nameof(PlaceSelectionAtSearchPinCommand),
+        nameof(PlaceSelectionAtHomeCommand))]
     private IReadOnlyList<PhotoItemViewModel> _selectedPhotos = [];
 
     [ObservableProperty] private IReadOnlyList<MapMarker> _mapMarkers = [];
@@ -181,7 +184,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         get
         {
             if (Photos.Count == 0) return "No photos";
-            var parts = new List<string> { $"{Photos.Count} photos", $"{TaggedCount} with location" };
+            int videos = Photos.Count(p => p.IsVideo), stills = Photos.Count - videos;
+            var parts = new List<string>();
+            if (stills > 0) parts.Add($"{stills} photo{(stills == 1 ? "" : "s")}");
+            if (videos > 0) parts.Add($"{videos} video{(videos == 1 ? "" : "s")}");
+            parts.Add($"{TaggedCount} with location");
             if (PendingCount > 0) parts.Add($"{PendingCount} unsaved");
             if (SelectedPhotos.Count > 0) parts.Add($"{SelectedPhotos.Count} selected");
             return string.Join(" · ", parts);
@@ -702,6 +709,33 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             FitRequested?.Invoke(changes.Select(c => c.Item2.Location!.Value).ToList(), 17);
         }
         _ = changed;
+    }
+
+    // ------------------------------------------------------------------ Home location
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHomeLocation))]
+    [NotifyCanExecuteChangedFor(nameof(PlaceSelectionAtHomeCommand))]
+    private GeoPoint? _homeLocation;
+
+    public bool HasHomeLocation => HomeLocation is not null;
+
+    private bool CanPlaceAtHome() => HasSelection && HomeLocation is not null;
+
+    [RelayCommand(CanExecute = nameof(CanPlaceAtHome))]
+    private void PlaceSelectionAtHome()
+    {
+        if (HomeLocation is not { } home) return;
+        PlaceAt(SelectedPhotos, home, SelectedPhotos.Count == 1 ? $"Placed {SelectedPhotos[0].FileName} at home" : $"Placed {SelectedPhotos.Count} photos at home");
+    }
+
+    public void SetHomeLocation(GeoPoint? home)
+    {
+        HomeLocation = home is { } h ? new GeoPoint(Math.Round(h.Latitude, 7), Math.Round(h.Longitude, 7)) : null;
+        Settings.HomeLatitude = HomeLocation?.Latitude;
+        Settings.HomeLongitude = HomeLocation?.Longitude;
+        SaveSettings();
+        StatusText = home is null ? "Home location cleared." : "Home location set. Select photos and press Home (Ctrl+H), or drop them on the house pin.";
     }
 
     // ------------------------------------------------------------------ Film mode
@@ -1288,6 +1322,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         vm.ApplyTo(Settings);
         SaveSettings();
         App.ApplyTheme(Settings.Theme);
+        HomeLocation = Settings.HomeLatitude is { } hl && Settings.HomeLongitude is { } hn ? new GeoPoint(hl, hn) : null;
 
         if (!string.Equals(oldExif, Settings.ExifToolPath, StringComparison.Ordinal)) await RestartExifToolAsync();
         if ((oldPair != Settings.PairRawWithJpeg || oldSub != Settings.IncludeSubfolders) && CurrentFolder is not null)

@@ -35,7 +35,10 @@ public sealed partial class PhotoItemViewModel : ObservableObject, IMapPhoto
         Source = source;
         _originalDateTaken = dateTaken ?? metadata?.DateTaken;
         _originalTimeZoneOffset = dateTaken is not null ? timeZoneOffset : metadata?.TimeZoneOffset;
-        Orientation = metadata?.Orientation ?? 1;
+        IsVideo = SupportedFormats.IsVideo(source.PrimaryPath);
+        // Video frames come out of ffmpeg already rotated; an embedded EXIF orientation would double-rotate them.
+        Orientation = IsVideo ? 1 : metadata?.Orientation ?? 1;
+        Duration = metadata?.Duration;
         Camera = metadata?.Camera;
         Lens = metadata?.Lens;
         _originalLocation = originalLocation;
@@ -52,6 +55,12 @@ public sealed partial class PhotoItemViewModel : ObservableObject, IMapPhoto
         : "+" + string.Join("+", Source.CompanionPaths.Select(p => Path.GetExtension(p).TrimStart('.').ToUpperInvariant()));
 
     public bool HasCompanions => Source.CompanionPaths.Count > 0;
+
+    public bool IsVideo { get; }
+
+    public TimeSpan? Duration { get; }
+
+    public string? DurationText => Duration is { } d ? (d.TotalHours >= 1 ? d.ToString(@"h\:mm\:ss") : d.ToString(@"m\:ss")) : null;
 
     /// <summary>The date taken as it will be after saving (pending film-mode time, or what's in the file).</summary>
     public DateTime? DateTaken => Pending.HasChange && Pending.CaptureTime is { } t ? t.DateTime : OriginalDateTaken;

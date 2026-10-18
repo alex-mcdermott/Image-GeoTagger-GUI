@@ -47,6 +47,8 @@ public static class GeoWriter
     /// <summary>Arguments that write (or remove) EXIF GPS tags in a media file.</summary>
     public static List<string> BuildEmbeddedArgs(string file, GeoTagChange change, WriteOptions options)
     {
+        if (SupportedFormats.IsVideo(file)) return BuildVideoArgs(file, change, options);
+
         // When the capture time changes, the file dates are set explicitly instead of preserved.
         var args = CommonArgs(options, preserveDates: options.PreserveFileDates && change.CaptureTime is null);
         if (change.Location is { } p)
@@ -93,6 +95,74 @@ public static class GeoWriter
             args.Add($"-DateTimeOriginal={taken.ToString("yyyy:MM:dd HH:mm:ss", Inv)}");
             args.Add($"-OffsetTimeOriginal={FormatOffset(taken.Offset)}");
             args.Add("-SubSecTimeOriginal=");
+            args.AddRange(FileDateArgs(taken));
+        }
+        args.Add(file);
+        return args;
+    }
+
+    /// <summary>
+    /// Arguments for QuickTime/MP4 videos. Players and libraries read GPS from different places, so
+    /// every common one is written: Apple's Keys location (Photos, macOS), ©xyz user data (Google
+    /// Photos, Windows, Android), XMP (Lightroom, Bridge) and the camera's own embedded EXIF GPS
+    /// block when it has one (e.g. Fujifilm). QuickTime dates are stored as UTC.
+    /// </summary>
+    public static List<string> BuildVideoArgs(string file, GeoTagChange change, WriteOptions options)
+    {
+        var args = CommonArgs(options, preserveDates: options.PreserveFileDates && change.CaptureTime is null);
+        args.Add("-api");
+        args.Add("QuickTimeUTC=1");
+
+        if (change.Location is { } p)
+        {
+            string lat = p.Latitude.ToString("0.########", Inv), lon = p.Longitude.ToString("0.########", Inv);
+            string coords = p.Altitude is { } a ? $"{lat}, {lon}, {a.ToString("0.###", Inv)}" : $"{lat}, {lon}";
+            args.Add($"-Keys:GPSCoordinates={coords}");
+            args.Add($"-UserData:GPSCoordinates={coords}");
+            args.Add($"-XMP-exif:GPSLatitude={lat}");
+            args.Add($"-XMP-exif:GPSLongitude={lon}");
+            // Embedded camera GPS (only updated if the camera wrote one; nothing is created otherwise).
+            args.Add($"-GPS:GPSLatitude={Math.Abs(p.Latitude).ToString("0.########", Inv)}");
+            args.Add($"-GPS:GPSLatitudeRef={(p.Latitude >= 0 ? "N" : "S")}");
+            args.Add($"-GPS:GPSLongitude={Math.Abs(p.Longitude).ToString("0.########", Inv)}");
+            args.Add($"-GPS:GPSLongitudeRef={(p.Longitude >= 0 ? "E" : "W")}");
+            if (p.Altitude is { } alt)
+            {
+                string abs = Math.Abs(alt).ToString("0.###", Inv), reference = alt >= 0 ? "0" : "1";
+                args.AddRange([$"-XMP-exif:GPSAltitude={abs}", $"-XMP-exif:GPSAltitudeRef={reference}",
+                    $"-GPS:GPSAltitude={abs}", $"-GPS:GPSAltitudeRef={reference}"]);
+            }
+            else
+            {
+                args.AddRange(["-XMP-exif:GPSAltitude=", "-XMP-exif:GPSAltitudeRef=", "-GPS:GPSAltitude=", "-GPS:GPSAltitudeRef="]);
+            }
+            if (change.GpsTimeUtc is { } t)
+            {
+                var u = t.UtcDateTime;
+                args.Add($"-XMP-exif:GPSDateTime={u.ToString("yyyy:MM:dd HH:mm:ss", Inv)}Z");
+                args.Add($"-GPS:GPSDateStamp={u.ToString("yyyy:MM:dd", Inv)}");
+                args.Add($"-GPS:GPSTimeStamp={u.ToString("HH:mm:ss", Inv)}");
+            }
+            else
+            {
+                args.AddRange(["-XMP-exif:GPSDateTime=", "-GPS:GPSDateStamp=", "-GPS:GPSTimeStamp="]);
+            }
+        }
+        else
+        {
+            args.AddRange(["-Keys:GPSCoordinates=", "-UserData:GPSCoordinates=", "-ItemList:GPSCoordinates=", "-GPS:all="]);
+            args.AddRange(XmpGpsDeletes());
+            args.Add("-XMP-exif:GPSDateTime=");
+        }
+
+        if (change.CaptureTime is { } taken)
+        {
+            string withZone = FormatDateWithZone(taken);
+            // exiftool converts these to UTC (QuickTimeUTC), as the QuickTime spec requires.
+            args.AddRange([$"-QuickTime:CreateDate={withZone}", $"-QuickTime:ModifyDate={withZone}",
+                $"-Track*Date={withZone}", $"-Media*Date={withZone}", $"-Keys:CreationDate={withZone}",
+                $"-XMP-exif:DateTimeOriginal={withZone}",
+                $"-ExifIFD:DateTimeOriginal={taken.ToString("yyyy:MM:dd HH:mm:ss", Inv)}"]);
             args.AddRange(FileDateArgs(taken));
         }
         args.Add(file);

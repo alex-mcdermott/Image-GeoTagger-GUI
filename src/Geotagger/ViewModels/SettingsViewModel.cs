@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Geotagger.Core.Geo;
 using Geotagger.Core.Photos;
 using Geotagger.Services;
 
@@ -28,6 +29,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _includeSubfolders = s.IncludeSubfolders;
         _offerFolderGpx = s.OfferFolderGpx;
         _exifToolPath = s.ExifToolPath ?? "";
+        _homeText = s.HomeLatitude is { } lat && s.HomeLongitude is { } lon ? CoordinateFormatter.ToDecimal(new GeoPoint(lat, lon)) : "";
         _theme = Themes.FirstOrDefault(t => t.Value == s.Theme) ?? Themes[0];
         ExifToolStatus = exifToolStatus;
         _cacheText = cacheInfo();
@@ -51,11 +53,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _exifToolPath;
     [ObservableProperty] private ThemeOption _theme;
     [ObservableProperty] private string _cacheText;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HomeError))] private string _homeText;
+
+    public string? HomeError =>
+        string.IsNullOrWhiteSpace(HomeText) || CoordinateParser.TryParse(HomeText, out _)
+            ? null
+            : "Couldn't read those coordinates. Try \"51.5007, -0.1246\" or paste a map link.";
+
+    public bool CanSave => HomeError is null;
+
+    [RelayCommand]
+    private void ClearHome() => HomeText = "";
 
     public string WriteTargetDescription => (WriteTarget)WriteTargetIndex switch
     {
-        WriteTarget.Embedded => "GPS tags are written into each file (RAW and JPEG). Existing XMP sidecars are updated to match.",
-        WriteTarget.Sidecar => "RAW files are never modified: locations go into .xmp sidecars (Lightroom/Adobe convention). JPEG/HEIC/TIFF files are tagged directly.",
+        WriteTarget.Embedded => "GPS tags are written into each file (RAW, JPEG and video). Existing XMP sidecars are updated to match.",
+        WriteTarget.Sidecar => "RAW files are never modified: locations go into .xmp sidecars (Lightroom/Adobe convention). JPEG/HEIC/TIFF files and videos are tagged directly.",
         _ => "GPS tags are written into each file and into an .xmp sidecar next to each RAW file.",
     };
 
@@ -85,5 +98,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         s.OfferFolderGpx = OfferFolderGpx;
         s.ExifToolPath = string.IsNullOrWhiteSpace(ExifToolPath) ? null : ExifToolPath.Trim();
         s.Theme = Theme.Value;
+        if (CoordinateParser.TryParse(HomeText, out var home))
+        {
+            s.HomeLatitude = Math.Round(home.Latitude, 7);
+            s.HomeLongitude = Math.Round(home.Longitude, 7);
+        }
+        else if (string.IsNullOrWhiteSpace(HomeText))
+        {
+            s.HomeLatitude = s.HomeLongitude = null;
+        }
     }
 }

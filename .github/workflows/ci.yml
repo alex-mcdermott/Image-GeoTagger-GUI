@@ -21,13 +21,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Install ExifTool
+      - name: Install ExifTool and ffmpeg
         shell: bash
         run: |
           case "$RUNNER_OS" in
-            macOS)   brew install exiftool ;;
-            Linux)   sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl ;;
-            Windows) choco install exiftool -y --no-progress ;;
+            macOS)   brew install exiftool ffmpeg ;;
+            Linux)   sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl ffmpeg ;;
+            Windows) choco install exiftool ffmpeg -y --no-progress ;;
           esac
 
       - name: Build

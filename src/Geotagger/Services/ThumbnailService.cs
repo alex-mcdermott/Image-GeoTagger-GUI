@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Avalonia.Media.Imaging;
@@ -166,9 +167,60 @@ public sealed class ThumbnailService
             if (codec is not null) candidates.Add((mediaPath, Math.Max(codec.Info.Width, codec.Info.Height)));
         }
 
+        // Videos rarely embed a decent preview; grab a frame with ffmpeg when it's installed.
+        if (SupportedFormats.IsVideo(mediaPath) && candidates.All(c => c.LongEdge < size / 2) &&
+            GrabVideoFrame(mediaPath, Path.Combine(work, prefix + "frame.jpg"), size) is { } frame)
+        {
+            using var codec = SKCodec.Create(frame);
+            if (codec is not null) candidates.Add((frame, Math.Max(codec.Info.Width, codec.Info.Height)));
+        }
+
         if (candidates.Count == 0) return null;
         var bigEnough = candidates.Where(c => c.LongEdge >= size).OrderBy(c => c.LongEdge).FirstOrDefault();
         return bigEnough.Path ?? candidates.OrderByDescending(c => c.LongEdge).First().Path;
+    }
+
+    private static readonly Lazy<string?> Ffmpeg = new(FindFfmpeg);
+
+    private static string? FindFfmpeg()
+    {
+        string exe = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+        var dirs = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Concat(OperatingSystem.IsWindows() ? [] : new[] { "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin" });
+        foreach (var d in dirs)
+        {
+            try
+            {
+                string p = Path.Combine(d.Trim().Trim('"'), exe);
+                if (File.Exists(p)) return p;
+            }
+            catch (ArgumentException) { }
+        }
+        return null;
+    }
+
+    /// <summary>Extracts one frame (about a second in, already rotated for display) as a JPEG.</summary>
+    private static string? GrabVideoFrame(string video, string output, int size)
+    {
+        if (Ffmpeg.Value is not { } ffmpeg) return null;
+        foreach (var seek in new[] { "1", "0" })
+        {
+            try
+            {
+                var psi = new ProcessStartInfo(ffmpeg) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
+                foreach (var a in new[] { "-hide_banner", "-loglevel", "error", "-y", "-ss", seek, "-i", video, "-frames:v", "1",
+                             "-vf", $"scale='min({size},iw)':-2", "-q:v", "3", output })
+                    psi.ArgumentList.Add(a);
+                using var p = Process.Start(psi);
+                if (p is null) return null;
+                p.StandardOutput.ReadToEndAsync();
+                p.StandardError.ReadToEndAsync();
+                if (!p.WaitForExit(20000)) { try { p.Kill(true); } catch { } return null; }
+                if (p.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0) return output;
+            }
+            catch (Exception) { return null; }
+        }
+        return null;
     }
 
     private static bool RenderToCache(string source, string destination, int size, int orientation)
