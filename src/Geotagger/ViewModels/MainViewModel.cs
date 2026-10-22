@@ -632,10 +632,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             MatchSummary = "Open a folder to match photos against this track.";
             return;
         }
-        int matched = Photos.Count(p => Match(p) is not null);
-        MatchSummary = matched == Photos.Count
-            ? $"All {matched} photos fall within the track log."
-            : $"{matched} of {Photos.Count} photos fall within the track log. Photos outside it can be placed by hand, or check the time zone and clock correction.";
+        MatchSummary = BuildMatchSummary(Photos.Count, Photos.Count(p => Match(p) is not null), Photos.Count(p => p.DateTaken is null));
+    }
+
+    // Photos with no date taken (e.g. the camera's clock was reset) can never match a track, so they are
+    // reported separately rather than suggesting a time zone or clock problem.
+    internal static string BuildMatchSummary(int total, int matched, int undated)
+    {
+        if (matched == total) return $"All {matched} photos fall within the track log.";
+        string summary = $"{matched} of {total} photos fall within the track log.";
+        int outside = total - matched - undated;
+        if (outside > 0)
+            summary += $" {outside} {(outside == 1 ? "is" : "are")} outside it: place {(outside == 1 ? "it" : "them")} by hand, or check the time zone and clock correction.";
+        if (undated > 0)
+            summary += $" {undated} {(undated == 1 ? "has" : "have")} no date taken, so place {(undated == 1 ? "it" : "them")} by hand, or use Film mode to take the date from the track as well.";
+        return summary;
     }
 
     partial void OnSelectedTimeZoneChanged(TimeZoneOption value)

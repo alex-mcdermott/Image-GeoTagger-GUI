@@ -32,8 +32,8 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Geotagger.icns"
 # ExifTool (Perl distribution; macOS ships with Perl). Found via Contents/Resources/exiftool.
 EXIFTOOL_VERSION="$(curl -fsSL https://exiftool.org/ver.txt | tr -d '[:space:]')"
 TMP="$(mktemp -d)"
-curl -fsSL "https://exiftool.org/Image-ExifTool-$EXIFTOOL_VERSION.tar.gz" -o "$TMP/exiftool.tgz" \
-  || curl -fsSL "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-$EXIFTOOL_VERSION.tar.gz/download" -o "$TMP/exiftool.tgz"
+curl -fsSL --retry 3 "https://exiftool.org/Image-ExifTool-$EXIFTOOL_VERSION.tar.gz" -o "$TMP/exiftool.tgz" \
+  || curl -fsSL --retry 3 --retry-all-errors "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-$EXIFTOOL_VERSION.tar.gz/download" -o "$TMP/exiftool.tgz"
 tar -xzf "$TMP/exiftool.tgz" -C "$TMP"
 mkdir -p "$APP/Contents/Resources/exiftool"
 cp -R "$TMP/Image-ExifTool-$EXIFTOOL_VERSION/exiftool" "$TMP/Image-ExifTool-$EXIFTOOL_VERSION/lib" "$APP/Contents/Resources/exiftool/"

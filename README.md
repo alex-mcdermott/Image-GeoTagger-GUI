@@ -31,10 +31,10 @@ Get the latest build from the [Releases page](https://github.com/alex-mcdermott/
 | Platform | File | Notes |
 | --- | --- | --- |
 | Windows 10/11 (x64) | `Geotagger-x.y.z-win-x64.zip` | Unzip and run `Geotagger.exe`. ExifTool is included. |
-| macOS (Apple silicon) | `Geotagger-x.y.z-osx-arm64.zip` | Unzip and move `Geotagger.app` to Applications. ExifTool is included. |
+| macOS (Apple silicon) | `Geotagger-x.y.z-osx-arm64.zip` | Unzip and move `Geotagger.app` to Applications (or `~/Applications` if you aren't an administrator). ExifTool is included. |
 | macOS (Intel) | `Geotagger-x.y.z-osx-x64.zip` | As above. |
 
-The macOS app is not notarised. The first time, right-click it and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/Geotagger.app`.
+The macOS app is not notarised. The first time, right-click it and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/Geotagger.app` (using the folder you installed it in).
 
 If ExifTool isn't bundled or installed, Geotagger offers to download the latest version from exiftool.org, or you can point it at an existing copy in **Settings**. ffmpeg is optional and only used for video thumbnails (`winget install ffmpeg` on Windows, `brew install ffmpeg` on macOS).
 

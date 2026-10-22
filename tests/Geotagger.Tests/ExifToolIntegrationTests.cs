@@ -131,6 +131,9 @@ public class ExifToolIntegrationTests
         using var dir = new TempDir();
         string copy = dir.File(Path.GetFileName(sample!));
         File.Copy(sample!, copy);
+        // Some cameras write files that already carry validation warnings (e.g. Fujifilm X-T5 RAFs have
+        // overlapping FujiIFD tags), so compare against the original rather than expecting a clean result.
+        string before = await TestExifTool.RunAsync("-s3", "-validate", copy);
         var where = new GeoPoint(51.4983404, -0.2653681, 8.3);
 
         var r = await GeoWriter.WriteAsync(et, new PhotoSource(copy), new GeoTagChange(where), new WriteOptions());
@@ -141,7 +144,7 @@ public class ExifToolIntegrationTests
         Assert.Equal(where.Longitude, read.Location!.Value.Longitude, 6);
         Assert.NotNull(read.DateTaken);
         string validate = await TestExifTool.RunAsync("-s3", "-validate", copy);
-        Assert.True(validate == "OK" || validate.Contains("minor"), validate);
+        Assert.True(validate == "OK" || validate.Contains("minor") || validate == before, $"before: {before}; after: {validate}");
     }
 
     [Fact]

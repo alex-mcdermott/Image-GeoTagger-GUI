@@ -198,3 +198,29 @@ public class CameraClockTests
     [Fact]
     public void Formats_corrections() => Assert.Equal("-00:01:30", CameraClock.FormatCorrection(TimeSpan.FromSeconds(-90)));
 }
+
+public class MatchSummaryTests
+{
+    [Fact]
+    public void All_matched() =>
+        Assert.Equal("All 3 photos fall within the track log.", Geotagger.ViewModels.MainViewModel.BuildMatchSummary(3, 3, 0));
+
+    [Fact]
+    public void Outside_track_suggests_checking_the_clock()
+    {
+        string s = Geotagger.ViewModels.MainViewModel.BuildMatchSummary(3, 2, 0);
+        Assert.StartsWith("2 of 3", s);
+        Assert.Contains("1 is outside it", s);
+        Assert.DoesNotContain("no date", s);
+    }
+
+    [Fact]
+    public void Undated_photos_are_reported_separately()
+    {
+        // e.g. a second camera whose clock was reset part-way through the day
+        string s = Geotagger.ViewModels.MainViewModel.BuildMatchSummary(353, 200, 153);
+        Assert.StartsWith("200 of 353", s);
+        Assert.Contains("153 have no date taken", s);
+        Assert.DoesNotContain("outside", s);
+    }
+}
