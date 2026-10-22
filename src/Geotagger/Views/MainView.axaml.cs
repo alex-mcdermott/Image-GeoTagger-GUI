@@ -184,8 +184,12 @@ public partial class MainView : UserControl
 
         IReadOnlyList<PhotoItemViewModel> photos = _pressItem.IsSelected ? _vm.SelectedPhotos.ToList() : [_pressItem];
         if (photos.Count == 0) return;
+        // The file paths as text give the native drag something to put on the pasteboard: on macOS an
+        // in-process format alone leaves it empty and AppKit throws, terminating the app.
+        var item = DataTransferItem.Create(PhotoFormat, new PhotoDragPayload(photos));
+        item.SetText(string.Join("\n", photos.Select(p => p.Source.PrimaryPath)));
         var transfer = new DataTransfer();
-        transfer.Add(DataTransferItem.Create(PhotoFormat, new PhotoDragPayload(photos)));
+        transfer.Add(item);
         try
         {
             await DragDrop.DoDragDropAsync(args, transfer, DragDropEffects.Link | DragDropEffects.Copy);
